@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -19,6 +20,7 @@ from src.models.concept import Concept, ConceptType
 from src.models.entity import Entity, EntityType
 from src.models.message import Conversation
 from src.models.relationship import Relationship
+from src.process.review_queue import CurationResult
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,9 @@ class ObsidianWriter:
         self.date_format = date_format
         self.dataview_fields = dataview_fields
         self.backlinks_section = backlinks_section
+        # Set during write_all; gives individual write_* methods access to
+        # curation metadata without changing their public signatures.
+        self._curation: Optional[CurationResult] = None
 
     def write_all(
         self,
@@ -75,8 +80,10 @@ class ObsidianWriter:
         entities: list[Entity],
         concepts: list[Concept],
         relationships: list[Relationship],
+        curation: Optional[CurationResult] = None,
     ) -> list[Path]:
         """Write all objects to the vault. Returns list of created file paths."""
+        self._curation = curation
         written: list[Path] = []
 
         for conv in conversations:
@@ -94,6 +101,7 @@ class ObsidianWriter:
             if path:
                 written.append(path)
 
+        self._curation = None  # clear after write
         logger.info("Wrote %d notes to %s", len(written), self.vault_path)
         return written
 
@@ -115,6 +123,10 @@ class ObsidianWriter:
             frontmatter["topics"] = conv.topics
         if conv.summary:
             frontmatter["summary"] = conv.summary
+        if self._curation and conv.id in self._curation.source_weights:
+            frontmatter["source_weight"] = round(
+                self._curation.source_weights[conv.id], 3
+            )
 
         lines: list[str] = []
         lines.append(f"# {title}\n")
@@ -169,6 +181,8 @@ class ObsidianWriter:
             frontmatter["first_seen"] = _format_date(entity.first_seen, self.date_format)
         if entity.last_seen:
             frontmatter["last_seen"] = _format_date(entity.last_seen, self.date_format)
+        if self._curation and entity.id in self._curation.review_ids:
+            frontmatter["needs_review"] = True
 
         lines: list[str] = []
         lines.append(f"# {entity.name}\n")
@@ -223,6 +237,34 @@ class ObsidianWriter:
             frontmatter["tags"].extend(concept.tags)
         if concept.source_conversation_id:
             frontmatter["source"] = concept.source_conversation_id
+
+        # Curation fields
+        if self._curation:
+            # effective_confidence = confidence weighted by source quality
+            if concept.source_conversation_id in self._curation.source_weights:
+                sw = self._curation.source_weights[concept.source_conversation_id]
+                frontmatter["effective_confidence"] = round(
+                    concept.confidence * sw, 3
+                )
+            # Review flag
+            if concept.id in self._curation.review_ids:
+                frontmatter["needs_review"] = True
+            # Temporal status (decisions and action items only)
+            status = self._curation.concept_statuses.get(concept.id)
+            if status:
+                frontmatter["status"] = status.status
+                if status.valid_from:
+                    frontmatter["valid_from"] = _format_date(
+                        status.valid_from, self.date_format
+                    )
+                if status.superseded_by_title:
+                    frontmatter["superseded_by"] = (
+                        f"[[{_sanitize_filename(status.superseded_by_title)}]]"
+                    )
+                if status.last_confirmed:
+                    frontmatter["last_confirmed"] = _format_date(
+                        status.last_confirmed, self.date_format
+                    )
 
         lines: list[str] = []
         lines.append(f"# {title}\n")

@@ -30,9 +30,14 @@ from src.output.obsidian import ObsidianWriter
 from src.output.graph import GraphExporter
 from src.output.moc import MOCGenerator
 from src.process.classifier import ConversationClassifier
+from src.process.contradiction_detector import ContradictionDetector
 from src.process.enricher import Enricher
+from src.process.entity_resolver import EntityResolver
 from src.process.extractor import EntityConceptExtractor, ExtractionResult
 from src.process.linker import ObjectLinker
+from src.process.review_queue import CurationResult, ReviewQueueGenerator
+from src.process.source_scorer import SourceScorer
+from src.process.temporal_tracker import TemporalTracker
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +111,42 @@ class LLMConfig:
 
 
 @dataclass
+class CurationConfig:
+    """Configuration for the Knowledge Curation Layer (stages 4a–4e)."""
+
+    enable_source_scoring: bool = True
+    enable_entity_resolution: bool = True
+    enable_temporal_tracking: bool = True
+    enable_contradiction_detection: bool = True
+    min_review_confidence: float = 0.6
+    entity_similarity_threshold: float = 0.85
+
+    @property
+    def any_enabled(self) -> bool:
+        return any([
+            self.enable_source_scoring,
+            self.enable_entity_resolution,
+            self.enable_temporal_tracking,
+            self.enable_contradiction_detection,
+        ])
+
+    @classmethod
+    def from_dict(cls, data: dict) -> CurationConfig:
+        if not data:
+            return cls()
+        return cls(
+            enable_source_scoring=data.get("enable_source_scoring", True),
+            enable_entity_resolution=data.get("enable_entity_resolution", True),
+            enable_temporal_tracking=data.get("enable_temporal_tracking", True),
+            enable_contradiction_detection=data.get(
+                "enable_contradiction_detection", True
+            ),
+            min_review_confidence=data.get("min_review_confidence", 0.6),
+            entity_similarity_threshold=data.get("entity_similarity_threshold", 0.85),
+        )
+
+
+@dataclass
 class PipelineConfig:
     """Runtime configuration for the pipeline."""
 
@@ -122,6 +163,7 @@ class PipelineConfig:
     graph_output_path: Path = Path("output/graph.json")
     generate_mocs: bool = True
     llm: LLMConfig = field(default_factory=LLMConfig)
+    curation: CurationConfig = field(default_factory=CurationConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> PipelineConfig:
@@ -133,6 +175,7 @@ class PipelineConfig:
         proc_cfg = data.get("processing", {})
         out_cfg = data.get("output", {}).get("obsidian", {})
         llm_data = data.get("llm", {})
+        curation_data = data.get("curation", {})
 
         source_dirs = {}
         for platform, dir_path in ingest_cfg.get("sources", {}).items():
@@ -149,6 +192,7 @@ class PipelineConfig:
             date_format=out_cfg.get("date_format", "%Y-%m-%d"),
             dataview_fields=out_cfg.get("dataview_fields", True),
             llm=LLMConfig.from_dict(llm_data),
+            curation=CurationConfig.from_dict(curation_data),
         )
 
 
@@ -276,6 +320,61 @@ class Pipeline:
         all_entities = [e for ex in extractions for e in ex.entities]
         all_concepts = [c for ex in extractions for c in ex.concepts]
 
+        # ---------------------------------------------------------------
+        # Stages 5a–5e: Knowledge Curation Layer
+        # ---------------------------------------------------------------
+        curation = CurationResult()
+
+        # Stage 5a: Source quality scoring
+        if self.config.curation.enable_source_scoring:
+            logger.info("Stage 5a: Source quality scoring...")
+            scorer = SourceScorer()
+            curation.source_weights = scorer.score_batch(conversations, extractions)
+
+        # Stage 5b: Corpus-level fuzzy entity resolution
+        if self.config.curation.enable_entity_resolution:
+            logger.info("Stage 5b: Corpus entity resolution...")
+            resolver = EntityResolver(
+                similarity_threshold=self.config.curation.entity_similarity_threshold
+            )
+            extractions, curation.merge_map = resolver.resolve(extractions)
+            # Re-flatten after resolution (may have changed entity set)
+            all_entities = [e for ex in extractions for e in ex.entities]
+            # Remap any relationships that pointed at now-merged entity IDs
+            if curation.merge_map:
+                relationships = resolver.remap_relationships(
+                    relationships, curation.merge_map
+                )
+
+        # Stage 5c: Temporal status tracking
+        if self.config.curation.enable_temporal_tracking:
+            logger.info("Stage 5c: Temporal status tracking...")
+            tracker = TemporalTracker()
+            curation.concept_statuses = tracker.track(all_concepts, conversations)
+
+        # Stage 5d: Contradiction detection
+        if self.config.curation.enable_contradiction_detection:
+            logger.info("Stage 5d: Contradiction detection...")
+            detector = ContradictionDetector()
+            curation.contradictions = detector.detect(all_concepts)
+            relationships.extend(curation.contradictions)
+
+        # Stage 5e: Review queue generation
+        logger.info("Stage 5e: Building review queue...")
+        review_gen = ReviewQueueGenerator(
+            min_review_confidence=self.config.curation.min_review_confidence
+        )
+        curation.review_items, curation.review_ids = review_gen.generate(
+            all_entities,
+            all_concepts,
+            curation.contradictions,
+            curation.merge_map or None,
+            curation.concept_statuses or None,
+        )
+        # Load any user corrections from the vault
+        if self.config.vault_path.exists():
+            curation.corrections = review_gen.load_corrections(self.config.vault_path)
+
         # Stage 6: Output
         logger.info("Stage 6: Writing to Obsidian vault...")
         writer = ObsidianWriter(
@@ -284,7 +383,10 @@ class Pipeline:
             date_format=self.config.date_format,
             dataview_fields=self.config.dataview_fields,
         )
-        written = writer.write_all(conversations, all_entities, all_concepts, relationships)
+        written = writer.write_all(
+            conversations, all_entities, all_concepts, relationships,
+            curation=curation,
+        )
 
         # Stage 7: MOCs
         if self.config.generate_mocs:
@@ -295,7 +397,8 @@ class Pipeline:
                 date_format=self.config.date_format,
             )
             moc_files = moc_gen.generate_all(
-                conversations, all_entities, all_concepts, relationships
+                conversations, all_entities, all_concepts, relationships,
+                curation=curation,
             )
             written.extend(moc_files)
 

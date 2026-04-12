@@ -22,13 +22,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
 from src.models.concept import Concept, ConceptType
 from src.models.entity import Entity, EntityType
 from src.models.message import Conversation
+from src.process.review_queue import CurationResult
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,7 @@ class MOCGenerator:
         entities: list[Entity],
         concepts: list[Concept],
         relationships: Any = None,
+        curation: Optional[CurationResult] = None,
     ) -> list[Path]:
         """Generate all MOCs. Returns list of created file paths."""
         self.moc_folder.mkdir(parents=True, exist_ok=True)
@@ -240,6 +242,9 @@ class MOCGenerator:
         written.append(self.generate_concept_index("question", concepts))
         written.append(self.generate_concept_index("action_item", concepts))
 
+        # Generate review queue dashboard (always, even if curation is empty)
+        written.append(self.generate_review_queue(curation))
+
         logger.info("Generated %d MOC files", len(written))
         return written
 
@@ -300,6 +305,10 @@ class MOCGenerator:
         lines.append("- [[MOC-Active-Decisions]] — High-confidence decisions")
         lines.append("- [[MOC-Open-Questions]] — Extracted questions")
         lines.append("- [[MOC-Action-Items]] — Action items and todos\n")
+
+        # Curation
+        lines.append("## Knowledge Quality\n")
+        lines.append("- [[MOC-Review-Queue]] — Items needing human review\n")
 
         # Recent conversations (dataview query)
         lines.append("## Recent Conversations\n")
@@ -565,6 +574,99 @@ class MOCGenerator:
             lines.append("")
 
         return self._write_moc(filename, frontmatter, "\n".join(lines))
+
+    def generate_review_queue(
+        self,
+        curation: Optional[CurationResult] = None,
+    ) -> Path:
+        """Generate MOC-Review-Queue.md with Dataview queries for human review."""
+        today = datetime.now()
+        frontmatter = {
+            "title": "Review Queue",
+            "type": "moc",
+            "tags": [f"{self.tag_prefix}/moc", f"{self.tag_prefix}/review"],
+            "date": _format_date(today, self.date_format),
+        }
+
+        lines: list[str] = []
+        lines.append("# Review Queue\n")
+        lines.append(
+            "Items flagged by the curation pipeline that need human attention.\n"
+        )
+
+        # Summary stats from the last run
+        if curation:
+            review_count = len(curation.review_ids)
+            contradiction_count = len(curation.contradictions)
+            merge_count = len(curation.merge_map)
+            lines.append("## Last Run Summary\n")
+            lines.append(f"- **Items needing review**: {review_count}")
+            lines.append(f"- **Contradictions detected**: {contradiction_count}")
+            lines.append(f"- **Entity merges performed**: {merge_count}")
+            if curation.corrections:
+                lines.append(
+                    f"- **User corrections loaded**: {len(curation.corrections)}"
+                )
+            lines.append("")
+
+        # Dataview: all items needing review
+        lines.append("## All Items Needing Review\n")
+        lines.append("```dataview")
+        lines.append("TABLE type, confidence, needs_review")
+        lines.append(f"FROM #{self.tag_prefix}")
+        lines.append("WHERE needs_review = true")
+        lines.append("SORT confidence ASC")
+        lines.append("LIMIT 50")
+        lines.append("```\n")
+
+        # Dataview: low-confidence extractions
+        lines.append("## Low-Confidence Extractions\n")
+        lines.append("```dataview")
+        lines.append("TABLE type, confidence, source")
+        lines.append(f"FROM #{self.tag_prefix}/concept")
+        lines.append("WHERE confidence < 0.6")
+        lines.append("SORT confidence ASC")
+        lines.append("LIMIT 30")
+        lines.append("```\n")
+
+        # Dataview: superseded decisions
+        lines.append("## Recently Superseded Decisions\n")
+        lines.append("```dataview")
+        lines.append("TABLE status, valid_from, superseded_by")
+        lines.append(f"FROM #{self.tag_prefix}/decision")
+        lines.append('WHERE status = "superseded"')
+        lines.append("SORT valid_from DESC")
+        lines.append("LIMIT 20")
+        lines.append("```\n")
+
+        # Dataview: contradictions
+        lines.append("## Detected Contradictions\n")
+        lines.append("```dataview")
+        lines.append("TABLE type, confidence, needs_review")
+        lines.append(f"FROM #{self.tag_prefix}/concept")
+        lines.append('WHERE needs_review = true AND type = "decision"')
+        lines.append("SORT date DESC")
+        lines.append("LIMIT 20")
+        lines.append("```\n")
+
+        # How to submit corrections
+        lines.append("## How to Submit Corrections\n")
+        lines.append(
+            "Create a `.yaml` file in `_corrections/` folder with one of these formats:\n"
+        )
+        lines.append("```yaml")
+        lines.append("# Rename an entity")
+        lines.append("original_id: <pipeline-object-id>")
+        lines.append("correction_type: rename")
+        lines.append("corrected_value: New Canonical Name")
+        lines.append("---")
+        lines.append("# Mark a decision as completed")
+        lines.append("original_id: <pipeline-object-id>")
+        lines.append("correction_type: status_change")
+        lines.append("corrected_value: completed")
+        lines.append("```\n")
+
+        return self._write_moc("MOC-Review-Queue", frontmatter, "\n".join(lines))
 
     def _write_moc(
         self,

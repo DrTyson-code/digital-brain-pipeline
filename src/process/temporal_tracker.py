@@ -1,0 +1,182 @@
+"""Lifecycle tracking for decisions and action items.
+
+Adds status metadata to concepts so the vault reflects whether a decision
+is still active, has been superseded by a newer one, or is completed.
+
+Detection approach (rule-based):
+- Group decisions and action items by type.
+- Sort by date (conversation created_at or concept created_at as fallback).
+- For each pair where the newer concept is topically similar (difflib >= threshold)
+  AND contains supersession keywords ("switched to", "no longer", etc.),
+  mark the older concept as superseded.
+
+Placeholder hook is included for an LLM-enhanced detection pass.
+
+New frontmatter fields produced (stored in ConceptStatus):
+    status:         active | superseded | completed | abandoned
+    valid_from:     date the concept was first seen
+    superseded_by:  short title of the superseding concept (for wikilink)
+    last_confirmed: last date this concept was referenced without contradiction
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from difflib import SequenceMatcher
+from typing import Dict, List, Optional
+
+from src.models.concept import Concept, ConceptType
+from src.models.message import Conversation
+
+logger = logging.getLogger(__name__)
+
+# Keywords whose presence in a newer concept suggests it supersedes an older one
+SUPERSESSION_KEYWORDS = [
+    "changed",
+    "reversed",
+    "decided instead",
+    "no longer",
+    "switched to",
+    "instead of",
+    "replaced",
+    "updated decision",
+    "actually",
+    "nevermind",
+    "going with",
+    "pivot",
+]
+
+# Minimum content similarity for supersession comparison
+_DEFAULT_SIMILARITY_THRESHOLD = 0.40
+
+# Concept types to track
+_TRACKED_TYPES = (ConceptType.DECISION, ConceptType.ACTION_ITEM)
+
+
+@dataclass
+class ConceptStatus:
+    """Lifecycle metadata for a single concept."""
+
+    concept_id: str
+    status: str = "active"  # active | superseded | completed | abandoned
+    valid_from: Optional[datetime] = None
+    superseded_by_id: Optional[str] = None
+    superseded_by_title: Optional[str] = None  # truncated content for wikilink
+    last_confirmed: Optional[datetime] = None
+
+
+@dataclass
+class TemporalTracker:
+    """Assign lifecycle status to decisions and action items."""
+
+    similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD
+
+    def track(
+        self,
+        concepts: List[Concept],
+        conversations: Optional[List[Conversation]] = None,
+    ) -> Dict[str, ConceptStatus]:
+        """Analyse concepts and return a ConceptStatus per concept.
+
+        Args:
+            concepts: All extracted concepts.
+            conversations: Optional list; used to resolve creation dates by
+                           conversation_id for accurate chronological ordering.
+
+        Returns:
+            Dict mapping concept_id → ConceptStatus.
+        """
+        # Build a date lookup: conversation_id → created_at
+        conv_dates: Dict[str, Optional[datetime]] = {}
+        if conversations:
+            for conv in conversations:
+                conv_dates[conv.id] = conv.created_at
+
+        def concept_date(c: Concept) -> datetime:
+            if c.source_conversation_id:
+                d = conv_dates.get(c.source_conversation_id)
+                if d is not None:
+                    return d
+            return c.created_at
+
+        # Initialise statuses for ALL concepts (not just tracked types)
+        statuses: Dict[str, ConceptStatus] = {}
+        for concept in concepts:
+            d = concept_date(concept)
+            statuses[concept.id] = ConceptStatus(
+                concept_id=concept.id,
+                status="active",
+                valid_from=d,
+                last_confirmed=d,
+            )
+
+        # Supersession detection — only for decisions and action items
+        tracked = [c for c in concepts if c.concept_type in _TRACKED_TYPES]
+        tracked_sorted = sorted(tracked, key=concept_date)
+
+        for i, newer in enumerate(tracked_sorted):
+            for older in tracked_sorted[:i]:
+                # Only compare same type
+                if older.concept_type != newer.concept_type:
+                    continue
+                # Skip if already superseded
+                if statuses[older.id].status == "superseded":
+                    continue
+
+                similarity = SequenceMatcher(
+                    None,
+                    older.content.lower(),
+                    newer.content.lower(),
+                ).ratio()
+
+                if similarity < self.similarity_threshold:
+                    continue
+
+                if self._has_supersession_signal(newer.content):
+                    statuses[older.id].status = "superseded"
+                    statuses[older.id].superseded_by_id = newer.id
+                    statuses[older.id].superseded_by_title = newer.content[:80]
+                    logger.debug(
+                        "Concept %r superseded by %r (similarity=%.2f)",
+                        older.id,
+                        newer.id,
+                        similarity,
+                    )
+
+        superseded_count = sum(
+            1 for s in statuses.values() if s.status == "superseded"
+        )
+        logger.info(
+            "Temporal tracking: %d concepts analysed, %d superseded",
+            len(tracked),
+            superseded_count,
+        )
+        return statuses
+
+    # ------------------------------------------------------------------
+    # Placeholder for LLM-enhanced detection
+    # ------------------------------------------------------------------
+
+    def track_with_llm(
+        self,
+        concepts: List[Concept],
+        conversations: Optional[List[Conversation]] = None,
+    ) -> Dict[str, ConceptStatus]:
+        """LLM-enhanced supersession detection (not yet implemented).
+
+        Falls back to rule-based detection until an LLM provider is wired in.
+        Override this method to add LLM-powered semantic comparison.
+        """
+        logger.debug("LLM-enhanced temporal tracking not implemented; using rules.")
+        return self.track(concepts, conversations)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _has_supersession_signal(self, content: str) -> bool:
+        """Return True if the content contains supersession keyword signals."""
+        content_lower = content.lower()
+        return any(kw in content_lower for kw in SUPERSESSION_KEYWORDS)

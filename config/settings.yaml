@@ -40,6 +40,20 @@ output:
     # Wikilink style: "wikilink" for [[note]] or "markdown" for [note](note.md)
     link_style: "wikilink"
 
+curation:
+  # Stage 4a: score each conversation for depth and quality
+  enable_source_scoring: true
+  # Stage 4b: fuzzy entity deduplication across the full corpus
+  enable_entity_resolution: true
+  # Stage 4c: detect superseded decisions and completed action items
+  enable_temporal_tracking: true
+  # Stage 4d: flag contradictory decisions and insights
+  enable_contradiction_detection: true
+  # Confidence below this threshold triggers a needs_review flag
+  min_review_confidence: 0.6
+  # Minimum name similarity to merge two entities (0.0–1.0)
+  entity_similarity_threshold: 0.85
+
 logging:
   level: INFO
   file: ~/.local/share/digital-brain-pipeline/pipeline.log
