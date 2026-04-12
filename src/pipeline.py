@@ -35,6 +35,7 @@ from src.process.enricher import Enricher
 from src.process.entity_resolver import EntityResolver
 from src.process.extractor import EntityConceptExtractor, ExtractionResult
 from src.process.linker import ObjectLinker
+from src.process.cross_domain import CrossDomainSynthesizer
 from src.process.review_queue import CurationResult, ReviewQueueGenerator
 from src.process.source_scorer import SourceScorer
 from src.process.temporal_tracker import TemporalTracker
@@ -374,6 +375,12 @@ class Pipeline:
         # Load any user corrections from the vault
         if self.config.vault_path.exists():
             curation.corrections = review_gen.load_corrections(self.config.vault_path)
+
+        # Stage 8: Cross-domain synthesis
+        logger.info("Stage 8: Cross-domain synthesis...")
+        synthesizer = CrossDomainSynthesizer()
+        bridges = synthesizer.find_bridges(all_entities, all_concepts)
+        curation.synthesis_notes = synthesizer.generate_synthesis_notes(bridges)
 
         # Stage 6: Output
         logger.info("Stage 6: Writing to Obsidian vault...")

@@ -79,6 +79,9 @@ class CurationResult:
     # Corrections loaded from vault _corrections/ folder
     corrections: List[Dict[str, Any]] = field(default_factory=list)
 
+    # Stage 8 — cross-domain synthesis notes
+    synthesis_notes: List[Any] = field(default_factory=list)  # List[SynthesisNote]
+
 
 # ---------------------------------------------------------------------------
 # Review queue generator
