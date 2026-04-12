@@ -1,0 +1,52 @@
+# Digital Brain Pipeline — LLM Configuration
+# Phase 2: LLM-Powered Extraction Layer
+#
+# API keys are NEVER stored here. Set the env vars below or use a .env file:
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#   export OPENAI_API_KEY=sk-...
+# Ollama requires no key — just a running server at base_url.
+
+llm:
+  # Extraction mode controls which pipeline stages use LLM calls.
+  # rules_only     — Phase 1 behavior, no LLM calls (free)
+  # llm_augmented  — Run both and merge results (default, recommended)
+  # llm_primary    — LLM first, rule-based fills gaps on failure
+  # llm_only       — Skip rule-based extraction entirely
+  extraction_mode: llm_augmented
+
+  # Provider configuration
+  provider:
+    name: claude              # claude | openai | ollama
+    model: null               # null = use provider default
+    api_key_env: ANTHROPIC_API_KEY   # env var holding the API key
+    base_url: null            # override for ollama (e.g. http://localhost:11434)
+    temperature: 0.0
+    max_retries: 2
+    timeout_seconds: 30
+
+  # Cost controls — prevents runaway spending on large export sets
+  budget:
+    max_cost_per_run_usd: 1.00
+    max_cost_per_conversation_usd: 0.05
+    warn_at_percent: 75
+
+  # Quality thresholds for accepting LLM-extracted data
+  quality:
+    entity_confidence_threshold: 0.5
+    relationship_confidence_threshold: 0.6
+    merge_similarity_threshold: 0.85   # Fuzzy name-matching for dedup
+
+  # Processing options
+  processing:
+    max_conversation_tokens: 8000      # Truncate / summarize above this
+    batch_size: 10                     # Conversations per processing batch
+    parallel_requests: 3               # Concurrent LLM calls (ollama only)
+    enable_cache: true
+    cache_path: .dbp_cache/
+
+  # Prompt versioning — bump a version to invalidate that stage's cache
+  prompts:
+    entity_extraction: v1
+    relationship_mapping: v1
+    concept_classification: v1
+    cross_linking: v1
