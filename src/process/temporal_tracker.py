@@ -60,11 +60,12 @@ class ConceptStatus:
     """Lifecycle metadata for a single concept."""
 
     concept_id: str
-    status: str = "active"  # active | superseded | completed | abandoned
+    status: str = "active"  # active | superseded | completed | abandoned | stale
     valid_from: Optional[datetime] = None
     superseded_by_id: Optional[str] = None
     superseded_by_title: Optional[str] = None  # truncated content for wikilink
     last_confirmed: Optional[datetime] = None
+    stale_since: Optional[str] = None  # ISO date when marked stale
 
 
 @dataclass
@@ -116,34 +117,43 @@ class TemporalTracker:
         tracked = [c for c in concepts if c.concept_type in _TRACKED_TYPES]
         tracked_sorted = sorted(tracked, key=concept_date)
 
-        for i, newer in enumerate(tracked_sorted):
-            for older in tracked_sorted[:i]:
-                # Only compare same type
-                if older.concept_type != newer.concept_type:
-                    continue
-                # Skip if already superseded
-                if statuses[older.id].status == "superseded":
-                    continue
+        # Cap look-back to avoid O(n²) blow-up on large corpora.
+        # Only compare each concept against the most-recent _MAX_LOOKBACK predecessors
+        # of the same type that still have supersession signal potential.
+        _MAX_LOOKBACK = 50
 
+        for i, newer in enumerate(tracked_sorted):
+            # Fast pre-filter: skip if newer has no supersession signal at all
+            if not self._has_supersession_signal(newer.content):
+                continue
+
+            newer_lower = newer.content.lower()
+            # Only look back at the last _MAX_LOOKBACK items of the same type
+            window = [
+                c for c in tracked_sorted[max(0, i - _MAX_LOOKBACK) : i]
+                if c.concept_type == newer.concept_type
+                and statuses[c.id].status != "superseded"
+            ]
+
+            for older in window:
                 similarity = SequenceMatcher(
                     None,
                     older.content.lower(),
-                    newer.content.lower(),
+                    newer_lower,
                 ).ratio()
 
                 if similarity < self.similarity_threshold:
                     continue
 
-                if self._has_supersession_signal(newer.content):
-                    statuses[older.id].status = "superseded"
-                    statuses[older.id].superseded_by_id = newer.id
-                    statuses[older.id].superseded_by_title = newer.content[:80]
-                    logger.debug(
-                        "Concept %r superseded by %r (similarity=%.2f)",
-                        older.id,
-                        newer.id,
-                        similarity,
-                    )
+                statuses[older.id].status = "superseded"
+                statuses[older.id].superseded_by_id = newer.id
+                statuses[older.id].superseded_by_title = newer.content[:80]
+                logger.debug(
+                    "Concept %r superseded by %r (similarity=%.2f)",
+                    older.id,
+                    newer.id,
+                    similarity,
+                )
 
         superseded_count = sum(
             1 for s in statuses.values() if s.status == "superseded"
@@ -154,6 +164,69 @@ class TemporalTracker:
             superseded_count,
         )
         return statuses
+
+    # ------------------------------------------------------------------
+    # Knowledge decay detection
+    # ------------------------------------------------------------------
+
+    def detect_stale_knowledge(
+        self,
+        concepts: List[Concept],
+        statuses: Dict[str, ConceptStatus],
+        stale_days: int = 90,
+        min_confidence: float = 0.7,
+    ) -> List[str]:
+        """Flag high-confidence decisions/action items that haven't been
+        re-referenced or superseded within *stale_days*.
+
+        Adds ``stale_since`` (ISO date string) to the ConceptStatus of flagged
+        items and sets their status to ``stale``.
+
+        Args:
+            concepts: All extracted concepts.
+            statuses: Dict of concept_id → ConceptStatus (mutated in place).
+            stale_days: Threshold in days since last_confirmed.
+            min_confidence: Only flag items at or above this confidence.
+
+        Returns:
+            List of concept IDs that were newly marked stale.
+        """
+        now = datetime.now()
+        stale_ids: List[str] = []
+
+        for concept in concepts:
+            if concept.concept_type not in _TRACKED_TYPES:
+                continue
+            if concept.confidence < min_confidence:
+                continue
+
+            st = statuses.get(concept.id)
+            if st is None or st.status in ("superseded", "completed", "abandoned"):
+                continue
+
+            ref_date = st.last_confirmed or st.valid_from
+            if ref_date is None:
+                continue
+
+            age_days = (now - ref_date).days
+            if age_days >= stale_days:
+                st.status = "stale"
+                st.stale_since = now.isoformat()[:10]
+                stale_ids.append(concept.id)
+                logger.debug(
+                    "Concept %r marked stale (age=%d days, confidence=%.2f)",
+                    concept.id,
+                    age_days,
+                    concept.confidence,
+                )
+
+        logger.info(
+            "Knowledge decay: %d items flagged as stale (>%d days, confidence>=%.2f)",
+            len(stale_ids),
+            stale_days,
+            min_confidence,
+        )
+        return stale_ids
 
     # ------------------------------------------------------------------
     # Placeholder for LLM-enhanced detection

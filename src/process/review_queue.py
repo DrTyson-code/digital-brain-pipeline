@@ -177,6 +177,23 @@ class ReviewQueueGenerator:
                     )
                     review_ids.add(concept_id)
 
+        # 5. Stale knowledge — high-confidence items not re-referenced
+        if concept_statuses:
+            for concept_id, status in concept_statuses.items():
+                if (
+                    status.status == "stale"
+                    and concept_id not in review_ids
+                ):
+                    items.append(
+                        ReviewItem(
+                            object_id=concept_id,
+                            object_type="concept",
+                            reason=f"Stale knowledge (since {status.stale_since})",
+                            priority="low",
+                        )
+                    )
+                    review_ids.add(concept_id)
+
         logger.info(
             "Review queue: %d items flagged (%d unique object IDs)",
             len(items),
