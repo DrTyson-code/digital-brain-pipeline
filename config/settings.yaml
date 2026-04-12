@@ -20,6 +20,8 @@ ingest:
     # Path to a Google Calendar JSON export produced by scripts/export_calendar.py
     # Set to null or omit to skip calendar ingestion
     calendar: ~/Desktop/calendar-export
+    # Cowork/Dispatch session transcripts (Claude Agent Mode)
+    cowork: ~/Library/Application Support/Claude/local-agent-mode-sessions
   # Skip conversations (or calendar days) shorter than this many messages/events
   min_messages: 2
   calendar:

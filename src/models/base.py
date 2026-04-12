@@ -26,6 +26,7 @@ class Platform(StrEnum):
     CHATGPT = "chatgpt"
     GEMINI = "gemini"
     CALENDAR = "calendar"
+    COWORK = "cowork"
 
 
 class OntologyObject(BaseModel):
