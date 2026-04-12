@@ -4,6 +4,9 @@ click>=8.1,<9
 rich>=13.0,<14
 python-dateutil>=2.8,<3
 
+# Testing
+pytest-asyncio>=0.21.0     # Async test support for LLM extractor tests
+
 # Phase 2: LLM extraction layer (all optional — only install what you use)
 anthropic>=0.40.0          # Claude provider
 openai>=1.50.0             # OpenAI provider

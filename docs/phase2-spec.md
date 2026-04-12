@@ -3,7 +3,7 @@
 
 **Version:** 0.1 draft  
 **Date:** 2026-04-11  
-**Status:** Proposal  
+**Status:** Implemented  
 **Depends on:** Phase 1 (rule-based pipeline, 26 passing tests, Pydantic models stable)
 
 ---

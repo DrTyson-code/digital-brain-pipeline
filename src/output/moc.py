@@ -575,6 +575,7 @@ class MOCGenerator:
         """Write a MOC markdown file with YAML frontmatter."""
         safe_filename = _sanitize_filename(filename) + ".md"
         file_path = self.moc_folder / safe_filename
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Build frontmatter YAML
         fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
