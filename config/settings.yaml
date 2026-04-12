@@ -15,9 +15,7 @@ vault:
 ingest:
   # Directories to scan for export files
   sources:
-    claude: ~/Downloads/claude-exports
-    chatgpt: ~/Downloads/chatgpt-exports
-    gemini: ~/Downloads/gemini-exports
+    claude: ~/Desktop/claude-export
   # Skip conversations shorter than this many messages
   min_messages: 2
 

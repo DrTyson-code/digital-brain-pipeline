@@ -162,6 +162,7 @@ class MOCGenerator:
         conversations: list[Conversation],
         entities: list[Entity],
         concepts: list[Concept],
+        relationships: Any = None,
     ) -> list[Path]:
         """Generate all MOCs. Returns list of created file paths."""
         self.moc_folder.mkdir(parents=True, exist_ok=True)
