@@ -1,0 +1,82 @@
+# Digital Brain Pipeline - Core Ontology Schema
+# Defines the object types and relationships in the knowledge graph.
+
+object_types:
+  ChatMessage:
+    description: A single message within a conversation
+    properties:
+      id: { type: string, required: true }
+      conversation_id: { type: string, required: true }
+      role: { type: string, enum: [user, assistant, system, tool], required: true }
+      content: { type: string, required: true }
+      timestamp: { type: datetime, required: false }
+      platform: { type: string, enum: [claude, chatgpt, gemini], required: true }
+      model: { type: string, required: false }
+      tokens: { type: integer, required: false }
+
+  Conversation:
+    description: A complete conversation session with an AI assistant
+    properties:
+      id: { type: string, required: true }
+      title: { type: string, required: false }
+      platform: { type: string, enum: [claude, chatgpt, gemini], required: true }
+      created_at: { type: datetime, required: true }
+      updated_at: { type: datetime, required: false }
+      summary: { type: string, required: false }
+    relations:
+      messages: { target: ChatMessage, cardinality: one_to_many }
+      topics: { target: Concept, cardinality: many_to_many }
+
+  Entity:
+    description: A named real-world or conceptual entity extracted from conversations
+    subtypes:
+      - Person
+      - Organization
+      - Project
+      - Tool
+      - Location
+    properties:
+      id: { type: string, required: true }
+      entity_type: { type: string, required: true }
+      name: { type: string, required: true }
+      aliases: { type: list[string], required: false }
+      first_seen: { type: datetime, required: false }
+      last_seen: { type: datetime, required: false }
+      properties: { type: map, required: false }
+
+  Concept:
+    description: An abstract idea, decision, or actionable item extracted from conversations
+    subtypes:
+      - Topic
+      - Decision
+      - ActionItem
+      - Insight
+      - Question
+    properties:
+      id: { type: string, required: true }
+      concept_type: { type: string, required: true }
+      content: { type: string, required: true }
+      context: { type: string, required: false }
+      confidence: { type: float, required: false, default: 1.0 }
+      source_conversation_id: { type: string, required: false }
+
+relationship_types:
+  mentions:
+    description: Source mentions or references the target
+    directed: true
+  decides:
+    description: A decision was made regarding the target
+    directed: true
+  relates_to:
+    description: General topical or conceptual relationship
+    directed: false
+  depends_on:
+    description: Source depends on or requires the target
+    directed: true
+  contradicts:
+    description: Source contradicts or conflicts with the target
+    directed: false
+
+link_properties:
+  weight: { type: float, default: 1.0, description: "Strength of the relationship (0.0 to 1.0)" }
+  evidence: { type: list[string], description: "Conversation excerpts supporting this link" }

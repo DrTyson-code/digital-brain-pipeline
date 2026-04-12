@@ -1,0 +1,47 @@
+# Digital Brain Pipeline - Runtime Configuration
+
+vault:
+  path: ~/Vault
+  # Subfolder structure within the vault for generated notes
+  folders:
+    conversations: "AI-Conversations"
+    entities: "Entities"
+    concepts: "Concepts"
+    projects: "Projects"
+    contacts: "Contacts"
+    decisions: "Decisions"
+    action_items: "Action-Items"
+
+ingest:
+  # Directories to scan for export files
+  sources:
+    claude: ~/Downloads/claude-exports
+    chatgpt: ~/Downloads/chatgpt-exports
+    gemini: ~/Downloads/gemini-exports
+  # Skip conversations shorter than this many messages
+  min_messages: 2
+
+processing:
+  # Confidence threshold for entity/concept extraction (0.0 to 1.0)
+  confidence_threshold: 0.5
+  # Maximum number of topics to assign per conversation
+  max_topics_per_conversation: 5
+  # Enable deduplication of entities across conversations
+  deduplicate_entities: true
+
+output:
+  obsidian:
+    # Add Dataview-compatible inline fields
+    dataview_fields: true
+    # Include backlinks section at bottom of notes
+    backlinks_section: true
+    # Tag prefix for auto-generated tags
+    tag_prefix: "ai-brain"
+    # Date format for frontmatter
+    date_format: "%Y-%m-%d"
+    # Wikilink style: "wikilink" for [[note]] or "markdown" for [note](note.md)
+    link_style: "wikilink"
+
+logging:
+  level: INFO
+  file: ~/.local/share/digital-brain-pipeline/pipeline.log
