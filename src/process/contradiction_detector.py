@@ -128,19 +128,27 @@ class ContradictionDetector:
     # ------------------------------------------------------------------
 
     def _has_contradiction(self, text_a: str, text_b: str) -> bool:
-        """Return True if one text affirms while the other negates via a known pattern."""
+        """Return True if one text affirms while the other negates via a known pattern.
+
+        A contradiction is signalled when:
+        - The two texts have opposite polarity for a pattern pair (one negates,
+          the other does not).
+        - At least one text contains the positive form of the keyword.
+          We don't require *both* to contain it because negation words like
+          "avoid" or "won't" implicitly reference the positive form.
+        """
         for positive_pat, negative_pat in _NEGATION_PAIRS:
             a_neg = bool(negative_pat.search(text_a))
             b_neg = bool(negative_pat.search(text_b))
 
             if a_neg == b_neg:
-                continue  # both same polarity for this pair
+                continue  # same polarity — not a contradiction for this pair
 
-            # Both must contain the base positive keyword for the pair to
-            # be meaningfully related (avoids coincidental negation matches).
+            # Require at least one text to contain the positive keyword so we
+            # avoid flagging unrelated sentences that happen to share "not".
             a_pos = bool(positive_pat.search(text_a))
             b_pos = bool(positive_pat.search(text_b))
-            if a_pos and b_pos:
+            if a_pos or b_pos:
                 return True
 
         return False
