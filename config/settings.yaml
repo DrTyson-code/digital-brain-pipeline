@@ -1,7 +1,7 @@
 # Digital Brain Pipeline - Runtime Configuration
 
 vault:
-  path: ~/Vault
+  path: ~/Desktop/claude-vault-output
   # Subfolder structure within the vault for generated notes
   folders:
     conversations: "AI-Conversations"

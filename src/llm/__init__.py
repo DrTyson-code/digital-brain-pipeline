@@ -5,4 +5,6 @@ Public API::
     from src.llm.provider import LLMProvider, LLMResponse, ProviderConfig, create_provider
     from src.llm.cost import CostTracker, TokenBudget, compute_cost
     from src.llm.cache import ExtractionCache
+    from src.llm.extractor import LLMExtractor
+    from src.llm.merger import ExtractionMerger
 """
