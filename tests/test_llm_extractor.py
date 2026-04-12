@@ -48,7 +48,14 @@ class MockProvider(LLMProvider):
         super().__init__(cfg)
         self.should_raise = should_raise
         self.canned_entities = canned_entities or []
-        self.canned_classification = canned_classification or {}
+        self.canned_classification = canned_classification or {
+            "primary_domain": "general",
+            "secondary_domains": [],
+            "purpose": "General discussion",
+            "depth": "surface",
+            "concepts": [],
+            "summary": "Mock classification.",
+        }
         self.extract_calls: list[dict] = []
 
     @property
@@ -319,14 +326,14 @@ async def test_extract_cache_put_get(sample_conversation, sample_entity_llm_data
 async def test_extract_budget_exceeded_raises(sample_conversation, sample_entity_llm_data):
     """Test that hard budget exceeded raises BudgetExceeded."""
     provider = MockProvider(canned_entities=sample_entity_llm_data)
-    budget = TokenBudget(max_cost_usd=0.0)  # Zero budget
+    budget = TokenBudget(max_cost_usd=0.001)  # Minimal budget
     cost_tracker = CostTracker(budget)
 
     # Mock the provider to have non-zero cost
     provider.extract_calls = []
 
     async def mock_extract(*args, **kwargs):
-        raise BudgetExceeded("Hard limit exceeded")
+        raise BudgetExceeded(0.01, 0.0)
 
     provider.extract_structured = mock_extract
 
@@ -476,11 +483,11 @@ async def test_extract_batch_stops_on_hard_budget_exceeded(sample_conversation):
 
     # Setup cost tracker that will raise on first call
     async def mock_extract(*args, **kwargs):
-        raise BudgetExceeded("Hard limit")
+        raise BudgetExceeded(0.01, 0.0)
 
     provider.extract_structured = mock_extract
 
-    budget = TokenBudget(max_cost_usd=0.0)
+    budget = TokenBudget(max_cost_usd=0.001)
     cost_tracker = CostTracker(budget)
 
     extractor = LLMExtractor(provider, cost_tracker=cost_tracker)
