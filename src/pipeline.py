@@ -37,6 +37,8 @@ from src.process.extractor import EntityConceptExtractor, ExtractionResult
 from src.process.linker import ObjectLinker
 from src.process.cross_domain import CrossDomainSynthesizer
 from src.process.review_queue import CurationResult, ReviewQueueGenerator
+from src.export.anki import AnkiCardGenerator, AnkiExporter
+from src.export.anki_scheduler import AnkiScheduler
 from src.process.source_scorer import SourceScorer
 from src.process.temporal_tracker import TemporalTracker
 
@@ -148,6 +150,29 @@ class CurationConfig:
 
 
 @dataclass
+class AnkiConfig:
+    """Configuration for the Anki export stage (Stage 9)."""
+
+    enabled: bool = False
+    output_path: Path = Path("data/anki_export.txt")
+    format: str = "tsv"
+    batch_size: int = 50
+    stale_only: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnkiConfig:
+        if not data:
+            return cls()
+        return cls(
+            enabled=data.get("enabled", False),
+            output_path=Path(data.get("output_path", "data/anki_export.txt")),
+            format=data.get("format", "tsv"),
+            batch_size=data.get("batch_size", 50),
+            stale_only=data.get("stale_only", False),
+        )
+
+
+@dataclass
 class PipelineConfig:
     """Runtime configuration for the pipeline."""
 
@@ -165,6 +190,7 @@ class PipelineConfig:
     generate_mocs: bool = True
     llm: LLMConfig = field(default_factory=LLMConfig)
     curation: CurationConfig = field(default_factory=CurationConfig)
+    anki: AnkiConfig = field(default_factory=AnkiConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> PipelineConfig:
@@ -177,6 +203,7 @@ class PipelineConfig:
         out_cfg = data.get("output", {}).get("obsidian", {})
         llm_data = data.get("llm", {})
         curation_data = data.get("curation", {})
+        anki_data = data.get("anki", {})
 
         source_dirs = {}
         for platform, dir_path in ingest_cfg.get("sources", {}).items():
@@ -194,6 +221,7 @@ class PipelineConfig:
             dataview_fields=out_cfg.get("dataview_fields", True),
             llm=LLMConfig.from_dict(llm_data),
             curation=CurationConfig.from_dict(curation_data),
+            anki=AnkiConfig.from_dict(anki_data),
         )
 
 
@@ -382,6 +410,10 @@ class Pipeline:
         bridges = synthesizer.find_bridges(all_entities, all_concepts)
         curation.synthesis_notes = synthesizer.generate_synthesis_notes(bridges)
 
+        # Stage 9: Anki export
+        if self.config.anki.enabled:
+            self._run_anki_export(all_concepts, curation)
+
         # Stage 6: Output
         logger.info("Stage 6: Writing to Obsidian vault...")
         writer = ObsidianWriter(
@@ -428,6 +460,44 @@ class Pipeline:
         )
         logger.info(result.summary)
         return result
+
+    def _run_anki_export(
+        self, concepts: list[Concept], curation: CurationResult
+    ) -> None:
+        """Run Anki export (Stage 9)."""
+        anki_cfg = self.config.anki
+        logger.info("Stage 9: Anki export...")
+
+        scheduler = AnkiScheduler(batch_size=anki_cfg.batch_size)
+        generator = AnkiCardGenerator()
+        exporter = AnkiExporter()
+
+        stale_ids: set[str] | None = None
+        if anki_cfg.stale_only and curation.concept_statuses:
+            stale_ids = {
+                cid for cid, st in curation.concept_statuses.items()
+                if st.status == "stale"
+            }
+
+        cards = generator.generate_from_concepts(
+            concepts,
+            stale_ids=stale_ids,
+            concept_statuses=curation.concept_statuses or None,
+        )
+        cards += generator.generate_from_synthesis_notes(curation.synthesis_notes or [])
+
+        new_cards = scheduler.filter_new(cards)
+        if not new_cards:
+            logger.info("Anki export: no new cards to export")
+            return
+
+        output_path = anki_cfg.output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_id = scheduler.start_run(anki_cfg.format, output_path)
+        exporter.export(new_cards, output_path, fmt=anki_cfg.format)
+        scheduler.mark_exported_batch(new_cards)
+        scheduler.complete_run(run_id, len(new_cards))
+        logger.info("Anki export: wrote %d cards to %s", len(new_cards), output_path)
 
     def _run_llm_extraction(
         self, conversations: list[Conversation]

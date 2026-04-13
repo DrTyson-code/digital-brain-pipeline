@@ -63,6 +63,13 @@ curation:
   # Minimum name similarity to merge two entities (0.0–1.0)
   entity_similarity_threshold: 0.85
 
+anki:
+  enabled: false
+  output_path: "data/anki_export.txt"
+  format: "tsv"
+  batch_size: 50
+  stale_only: false
+
 logging:
   level: INFO
   file: ~/.local/share/digital-brain-pipeline/pipeline.log
