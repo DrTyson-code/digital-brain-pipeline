@@ -25,6 +25,7 @@ class Platform(StrEnum):
     CLAUDE = "claude"
     CHATGPT = "chatgpt"
     GEMINI = "gemini"
+    CALENDAR = "calendar"
 
 
 class OntologyObject(BaseModel):
