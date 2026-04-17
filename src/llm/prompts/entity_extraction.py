@@ -36,6 +36,7 @@ Rules:
 4. Provide a one-sentence description grounded in how the entity appears in THIS conversation
 5. Assign a confidence score (0.0–1.0) based on how clearly the entity is identified
 6. Include up to 3 direct quotes from the conversation as grounding evidence
+7. NEVER fabricate quotes — every source_quote must be a verbatim excerpt from the conversation
 
 Return JSON matching the provided schema exactly."""
 

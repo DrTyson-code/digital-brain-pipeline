@@ -144,6 +144,9 @@ class LLMExtractor:
                     conversation.id,
                 )
 
+            # Verify extracted content is grounded in source text
+            result = self._verify_source_grounding(result, conversation_text)
+
         except BudgetExceeded as exc:
             logger.error(
                 "Budget exceeded for conversation %s: %s",
@@ -569,6 +572,106 @@ class LLMExtractor:
             )
 
         return classification
+
+    # =========================================================================
+    # Private: Source grounding validation
+    # =========================================================================
+
+    def _fuzzy_quote_match(
+        self, quote: str, text: str, threshold: float = 0.8
+    ) -> bool:
+        """Check if quote appears in text, allowing for minor LLM paraphrasing.
+
+        Tries exact substring match first, then word overlap using sliding window.
+
+        Args:
+            quote: The quote to find
+            text: The source text to search in
+            threshold: Minimum word overlap ratio (0.0–1.0) for fuzzy match
+
+        Returns:
+            True if quote matches (exactly or fuzzily), False otherwise
+        """
+        # Exact substring match first
+        quote_lower = quote.lower().strip()
+        text_lower = text.lower()
+        if quote_lower in text_lower:
+            return True
+
+        # Word overlap check for fuzzy matching
+        quote_words = set(quote_lower.split())
+        text_words = text_lower.split()
+        window_size = len(quote_words)
+
+        if window_size == 0:
+            return False
+
+        # Sliding window over text
+        for i in range(len(text_words) - window_size + 1):
+            window = set(text_words[i : i + window_size])
+            if len(quote_words) > 0:
+                overlap = len(quote_words & window) / len(quote_words)
+                if overlap >= threshold:
+                    return True
+
+        return False
+
+    def _verify_source_grounding(
+        self, extraction_result: ExtractionResult, conversation_text: str
+    ) -> ExtractionResult:
+        """Verify that extracted entity quotes are grounded in the source text.
+
+        For each entity with source_quotes:
+        - Check if each quote (or fuzzy match) appears in conversation_text
+        - Remove quotes that don't match
+        - Reduce confidence by 0.15 per removed quote
+        - If all quotes removed, set confidence to max(original, 0.3)
+        - Log warnings for each removed quote
+
+        Args:
+            extraction_result: The extraction result to validate
+            conversation_text: The source conversation text
+
+        Returns:
+            Modified extraction_result with grounded quotes and adjusted confidence
+        """
+        for entity in extraction_result.entities:
+            # Skip entities with no quotes
+            if not entity.properties.get("source_quotes"):
+                continue
+
+            original_quotes = entity.properties["source_quotes"].copy()
+            verified_quotes = []
+            confidence = entity.properties.get("confidence", 0.5)
+            removed_count = 0
+
+            for quote in original_quotes:
+                if self._fuzzy_quote_match(quote, conversation_text):
+                    verified_quotes.append(quote)
+                else:
+                    removed_count += 1
+                    logger.warning(
+                        "Entity %r: quote not grounded in text: %r",
+                        entity.name,
+                        quote,
+                    )
+                    # Reduce confidence for each ungrounded quote
+                    confidence = max(0.0, confidence - 0.15)
+
+            # Update entity with verified quotes
+            entity.properties["source_quotes"] = verified_quotes
+
+            # If all quotes were removed, set confidence to minimum viable level
+            if removed_count > 0 and len(verified_quotes) == 0:
+                confidence = max(confidence, 0.3)
+                logger.warning(
+                    "Entity %r: all quotes ungrounded; confidence floor applied",
+                    entity.name,
+                )
+
+            entity.properties["confidence"] = confidence
+
+        return extraction_result
 
     # =========================================================================
     # Private: Conversion functions (LLM schema → pipeline schema)
