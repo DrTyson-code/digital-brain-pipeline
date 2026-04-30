@@ -11,7 +11,7 @@ document shifts global term frequencies).
 Usage::
 
     embedder = NoteEmbedder(db_path=Path(".dbp_cache/embeddings.db"))
-    changed = embedder.embed_vault(Path("~/Desktop/claude-vault-output"))
+    changed = embedder.embed_vault(Path("~/Vault/Claude-Brain"))
     embedder.close()
 """
 

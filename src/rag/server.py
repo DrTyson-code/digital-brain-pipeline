@@ -18,7 +18,7 @@ GET /context?q=...&top_k=5
 
 Configuration (environment variables)
 --------------------------------------
-RAG_VAULT_PATH   Path to vault (default ~/Desktop/claude-vault-output)
+RAG_VAULT_PATH   Path to vault (default ~/Vault/Claude-Brain)
 RAG_DB_PATH      SQLite embeddings DB (default .dbp_cache/embeddings.db)
 RAG_CHROMA_PATH  ChromaDB directory (default data/chroma; empty = disabled)
 """
@@ -85,7 +85,7 @@ class QueryResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     vault_path = Path(
-        os.environ.get("RAG_VAULT_PATH", "~/Desktop/claude-vault-output")
+        os.environ.get("RAG_VAULT_PATH", "~/Vault/Claude-Brain")
     ).expanduser()
     db_path = Path(os.environ.get("RAG_DB_PATH", ".dbp_cache/embeddings.db"))
 

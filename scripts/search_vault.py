@@ -39,7 +39,7 @@ from src.search.engine import VaultSearchEngine  # noqa: E402
 
 console = Console()
 
-_DEFAULT_VAULT = str(Path("~/Desktop/claude-vault-output").expanduser())
+_DEFAULT_VAULT = str(Path("~/Vault/Claude-Brain").expanduser())
 _DEFAULT_DB = ".dbp_cache/embeddings.db"
 
 # ---------------------------------------------------------------------------

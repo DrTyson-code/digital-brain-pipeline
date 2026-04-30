@@ -9,7 +9,7 @@ Usage::
     python3 scripts/start_rag_server.py
 
     # Custom vault / port
-    python3 scripts/start_rag_server.py --port 8742 --vault-path ~/Desktop/claude-vault-output
+    python3 scripts/start_rag_server.py --port 8742 --vault-path ~/Vault/Claude-Brain
 
     # Force full re-index before starting
     python3 scripts/start_rag_server.py --rebuild
@@ -77,7 +77,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--vault-path",
-        default="~/Desktop/claude-vault-output",
+        default="~/Vault/Claude-Brain",
         help="Path to the Obsidian vault",
     )
     parser.add_argument(
