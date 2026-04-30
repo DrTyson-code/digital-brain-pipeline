@@ -175,6 +175,23 @@ class AnkiConfig:
 
 
 @dataclass
+class BackupConfig:
+    """Configuration for vault backup retention."""
+
+    max_count: int = 7
+    max_total_size_gb: float = 10.0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> BackupConfig:
+        if not data:
+            return cls()
+        return cls(
+            max_count=max(0, int(data.get("max_count", 7))),
+            max_total_size_gb=max(0.0, float(data.get("max_total_size_gb", 10.0))),
+        )
+
+
+@dataclass
 class PipelineConfig:
     """Runtime configuration for the pipeline."""
 
@@ -193,6 +210,7 @@ class PipelineConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     curation: CurationConfig = field(default_factory=CurationConfig)
     anki: AnkiConfig = field(default_factory=AnkiConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> PipelineConfig:
@@ -206,6 +224,7 @@ class PipelineConfig:
         llm_data = data.get("llm", {})
         curation_data = data.get("curation", {})
         anki_data = data.get("anki", {})
+        backup_data = data.get("backup", {})
 
         source_dirs = {}
         for platform, dir_path in ingest_cfg.get("sources", {}).items():
@@ -224,6 +243,7 @@ class PipelineConfig:
             llm=LLMConfig.from_dict(llm_data),
             curation=CurationConfig.from_dict(curation_data),
             anki=AnkiConfig.from_dict(anki_data),
+            backup=BackupConfig.from_dict(backup_data),
         )
 
 
@@ -487,6 +507,7 @@ class Pipeline:
         dest = self._next_backup_path(backup_root)
         shutil.copytree(vault, dest)
         logger.info("Vault snapshot before %s written to %s", stage_name, dest)
+        self._prune_backups(backup_root)
         return dest
 
     @staticmethod
@@ -498,6 +519,42 @@ class Pipeline:
             dest = backup_root / f"{timestamp}-{suffix:02d}"
             suffix += 1
         return dest
+
+    def _prune_backups(self, backup_root: Path) -> None:
+        backups = self._backup_dirs(backup_root)
+        max_count = self.config.backup.max_count
+
+        while len(backups) > max_count:
+            old = backups.pop(0)
+            shutil.rmtree(old)
+            logger.debug("Removed backup over count cap: %s", old)
+
+        max_total_size = int(self.config.backup.max_total_size_gb * 1024 ** 3)
+        while backups and self._total_backup_size(backups) > max_total_size:
+            old = backups.pop(0)
+            shutil.rmtree(old)
+            logger.debug("Removed backup over size cap: %s", old)
+
+    @staticmethod
+    def _backup_dirs(backup_root: Path) -> list[Path]:
+        if not backup_root.exists():
+            return []
+        return sorted(
+            (path for path in backup_root.iterdir() if path.is_dir()),
+            key=lambda path: path.name,
+        )
+
+    @classmethod
+    def _total_backup_size(cls, backups: list[Path]) -> int:
+        return sum(cls._directory_size(backup) for backup in backups)
+
+    @staticmethod
+    def _directory_size(directory: Path) -> int:
+        total = 0
+        for path in directory.rglob("*"):
+            if path.is_file():
+                total += path.stat().st_size
+        return total
 
     def _run_anki_export(
         self, concepts: list[Concept], curation: CurationResult
