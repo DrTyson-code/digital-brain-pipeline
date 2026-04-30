@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
@@ -116,7 +116,7 @@ class CoworkIngester(BaseIngester):
         conversations: list[Conversation] = []
         for jsonl_file in sorted(directory.rglob("*.jsonl")):
             # Skip audit logs and subagent traces
-            if jsonl_file.name == "audit.jsonl":
+            if jsonl_file.name.startswith("audit") and jsonl_file.name.endswith(".jsonl"):
                 continue
             if "subagents" in jsonl_file.parts:
                 continue
@@ -261,7 +261,7 @@ class CoworkIngester(BaseIngester):
         if not messages:
             return None
 
-        messages.sort(key=lambda m: m.timestamp or datetime.min)
+        messages.sort(key=lambda m: m.timestamp or datetime.min.replace(tzinfo=timezone.utc))
 
         # Build title: prefer task name, then path slug, then session ID
         title = (
