@@ -7,7 +7,7 @@ Usage::
 
     embedder = VectorEmbedder(chroma_path=Path("data/chroma/"))
     if embedder.is_available():
-        n = embedder.embed_vault(vault_path=Path("~/Desktop/claude-vault-output"))
+        n = embedder.embed_vault(vault_path=Path("~/Vault/Claude-Brain"))
 """
 
 from __future__ import annotations
