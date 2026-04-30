@@ -684,6 +684,6 @@ class MOCGenerator:
         fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
         content = f"---\n{fm_str}---\n\n{body}"
 
-        atomic_write(file_path, content)
+        atomic_write(file_path, content, root=self.vault_path)
         logger.debug("Wrote MOC: %s", file_path)
         return file_path

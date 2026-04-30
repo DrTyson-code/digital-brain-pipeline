@@ -14,6 +14,7 @@ import yaml
 from src.models.concept import Concept, ConceptType
 from src.models.entity import Entity, EntityType
 from src.models.message import ChatMessage, Conversation, Role
+import src.output.moc as moc_module
 from src.output.moc import MOCGenerator, DOMAIN_KEYWORDS
 
 
@@ -207,6 +208,23 @@ def test_generator_custom_tag_prefix(vault_path):
     gen = MOCGenerator(vault_path=vault_path, tag_prefix="my-brain")
 
     assert gen.tag_prefix == "my-brain"
+
+
+def test_write_moc_passes_vault_root_to_atomic_write(vault_path, monkeypatch):
+    """MOC writes should validate paths against the vault root."""
+    gen = MOCGenerator(vault_path=vault_path)
+    calls = []
+
+    def record_atomic_write(path, content, **kwargs):
+        calls.append((path, content, kwargs))
+
+    monkeypatch.setattr(moc_module, "atomic_write", record_atomic_write)
+
+    path = gen._write_moc("Review Queue", {"title": "Review Queue"}, "body")
+
+    assert path == vault_path / "MOC" / "Review Queue.md"
+    assert calls[0][0] == path
+    assert calls[0][2]["root"] == vault_path
 
 
 def test_generate_dashboard(generator, sample_conversations, sample_entities, sample_concepts):

@@ -9,6 +9,7 @@ import pytest
 
 from src.models.concept import Concept, ConceptType
 from src.models.entity import Entity, EntityType
+import src.process.cross_domain as cross_domain_module
 from src.process.cross_domain import (
     BRIDGE_CONCEPT,
     BRIDGE_ENTITY,
@@ -462,6 +463,24 @@ def test_write_to_vault_empty_notes():
         assert written == []
 
 
+def test_write_to_vault_passes_vault_root_to_atomic_write(tmp_path, monkeypatch):
+    synth = CrossDomainSynthesizer()
+    bridge = _bridge()
+    notes = synth.generate_synthesis_notes([bridge], discovered_date="2026-04-12")
+    calls = []
+
+    def record_atomic_write(path, content, **kwargs):
+        calls.append((path, content, kwargs))
+
+    monkeypatch.setattr(cross_domain_module, "atomic_write", record_atomic_write)
+
+    written = synth.write_to_vault(notes, tmp_path)
+
+    assert len(written) == 1
+    assert calls[0][0] == written[0]
+    assert calls[0][2]["root"] == tmp_path
+
+
 # ---------------------------------------------------------------------------
 # Tests: CrossDomainSynthesizer.generate_moc
 # ---------------------------------------------------------------------------
@@ -521,6 +540,24 @@ def test_generate_moc_has_dataview_block():
         content = moc_path.read_text(encoding="utf-8")
         assert "```dataview" in content
         assert "FROM" in content
+
+
+def test_generate_moc_passes_vault_root_to_atomic_write(tmp_path, monkeypatch):
+    synth = CrossDomainSynthesizer()
+    bridge = _bridge()
+    notes = synth.generate_synthesis_notes([bridge], discovered_date="2026-04-12")
+    calls = []
+
+    def record_atomic_write(path, content, **kwargs):
+        calls.append((path, content, kwargs))
+
+    monkeypatch.setattr(cross_domain_module, "atomic_write", record_atomic_write)
+
+    moc_path = synth.generate_moc(notes, tmp_path)
+
+    assert moc_path == tmp_path / "Cross-Domain Synthesis MOC.md"
+    assert calls[0][0] == moc_path
+    assert calls[0][2]["root"] == tmp_path
 
 
 # ---------------------------------------------------------------------------

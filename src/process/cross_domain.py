@@ -485,7 +485,7 @@ class CrossDomainSynthesizer:
 
         written: List[Path] = []
         for note in notes:
-            path = self._write_note(note, folder, tag_prefix)
+            path = self._write_note(note, folder, tag_prefix, vault_path)
             if path:
                 written.append(path)
 
@@ -569,7 +569,7 @@ class CrossDomainSynthesizer:
             "```\n",
         ]
 
-        atomic_write(moc_path, "\n".join(lines))
+        atomic_write(moc_path, "\n".join(lines), root=vault_path)
         logger.info("Cross-domain MOC written to %s", moc_path)
         return moc_path
 
@@ -687,6 +687,7 @@ class CrossDomainSynthesizer:
         note: SynthesisNote,
         folder: Path,
         tag_prefix: str,
+        vault_root: Path,
     ) -> Optional[Path]:
         """Write a single synthesis note to *folder*."""
         safe_title = _sanitize_filename(note.title)
@@ -738,7 +739,7 @@ class CrossDomainSynthesizer:
         content = f"---\n{fm_str}---\n\n" + "\n".join(lines)
 
         try:
-            atomic_write(file_path, content)
+            atomic_write(file_path, content, root=vault_root)
             return file_path
         except OSError as exc:
             logger.error("Failed to write synthesis note %s: %s", file_path, exc)
