@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 import yaml
 
-from src.ingest import ClaudeIngester, ChatGPTIngester, GeminiIngester
+from src.ingest import ClaudeIngester, ChatGPTIngester, GeminiIngester, CoworkIngester
 from src.models.base import Platform
 from src.models.concept import Concept
 from src.models.entity import Entity
@@ -276,6 +276,7 @@ INGESTERS = {
     "claude": ClaudeIngester,
     "chatgpt": ChatGPTIngester,
     "gemini": GeminiIngester,
+    "cowork": CoworkIngester,
 }
 
 
