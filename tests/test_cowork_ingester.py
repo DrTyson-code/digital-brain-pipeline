@@ -186,15 +186,15 @@ class TestBasicParsing:
         conv = ingester.ingest(path)[0]
         assert conv.title == "check-something"
 
-    def test_tool_result_user_records_are_filtered(self):
-        """User records that are only tool_result blocks should be dropped."""
+    def test_tool_result_user_records_retain_text_content(self):
+        """User records with text tool_result blocks should retain that output."""
         path = _write_jsonl(BASIC_SESSION)
         ingester = CoworkIngester(min_messages=1)
         conv = ingester.ingest(path)[0]
-        # Only 1 user message (the plain text one); the tool_result record is skipped
         user_msgs = conv.user_messages
-        assert len(user_msgs) == 1
+        assert len(user_msgs) == 2
         assert user_msgs[0].content == "Please check the server status."
+        assert user_msgs[1].content == "12:00  up 3 days"
 
     def test_thinking_blocks_stripped_from_assistant(self):
         """thinking blocks must not appear in assistant message content."""
@@ -205,13 +205,13 @@ class TestBasicParsing:
         assert "Let me check" not in first_assistant.content
         assert "check the server status now" in first_assistant.content
 
-    def test_tool_use_blocks_stripped_from_assistant(self):
-        """tool_use blocks must not appear in assistant message content."""
+    def test_tool_use_args_retained_from_assistant(self):
+        """tool_use argument dictionaries should appear in assistant message content."""
         path = _write_jsonl(BASIC_SESSION)
         ingester = CoworkIngester(min_messages=1)
         conv = ingester.ingest(path)[0]
         first_assistant = conv.assistant_messages[0]
-        assert "uptime" not in first_assistant.content
+        assert 'tool_use args: {"command":"uptime"}' in first_assistant.content
 
     def test_assistant_model_captured(self):
         path = _write_jsonl(BASIC_SESSION)
@@ -351,8 +351,8 @@ class TestEdgeCases:
         assert len(conversations) == 1
         assert conversations[0].message_count == 2
 
-    def test_all_tool_result_records_returns_empty(self):
-        """A session with only tool_result user records and no text produces no conversation."""
+    def test_all_text_tool_result_records_returns_conversation(self):
+        """A session with text tool_result user records retains those results."""
         only_tool_results = [
             {
                 "type": "user",
@@ -370,7 +370,9 @@ class TestEdgeCases:
         ]
         path = _write_jsonl(only_tool_results)
         ingester = CoworkIngester(min_messages=1)
-        assert ingester.ingest(path) == []
+        conversations = ingester.ingest(path)
+        assert len(conversations) == 1
+        assert conversations[0].messages[0].content == "ok"
 
     def test_session_id_falls_back_to_filename_stem(self):
         """When no sessionId field exists, conversation id = file stem."""

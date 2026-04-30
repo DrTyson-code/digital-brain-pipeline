@@ -11,8 +11,8 @@ Each file contains one JSON object per line representing a message event:
       (text, thinking, tool_use)
   - type "queue-operation": scheduling metadata — skipped
 
-Tool-call payloads (tool_use blocks) and raw tool results (tool_result blocks)
-are stripped; only human-readable text blocks from user/assistant turns are kept.
+Tool-call arguments (tool_use input) and text tool results are retained alongside
+human-readable text blocks from user/assistant turns.
 Internal sidechain records (isSidechain=true) are also skipped.
 
 Session title is derived from the "cwd" field or directory path slug
@@ -49,10 +49,36 @@ def _parse_timestamp(value: str | None) -> datetime | None:
         return None
 
 
-def _extract_text(content) -> str:
-    """Return only human-readable text from a message content field.
+def _compact_json(value) -> str:
+    """Return compact, stable JSON for tool arguments when possible."""
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return str(value)
 
-    Skips thinking blocks, tool_use blocks, and tool_result blocks.
+
+def _extract_tool_result_text(block: dict) -> list[str]:
+    """Return text content from a tool_result block."""
+    content = block.get("content")
+    if isinstance(content, str):
+        text = content.strip()
+        return [text] if text else []
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = item.get("text", "").strip()
+            if text:
+                parts.append(text)
+        return parts
+    return []
+
+
+def _extract_text(content) -> str:
+    """Return user-visible text and work content from a message content field.
+
+    Skips thinking blocks and non-text tool_result content.
     """
     if isinstance(content, str):
         return content.strip()
@@ -65,19 +91,15 @@ def _extract_text(content) -> str:
                 text = block.get("text", "").strip()
                 if text:
                     parts.append(text)
-            # thinking / tool_use / tool_result — all skipped
+            elif block.get("type") == "tool_use":
+                tool_args = block.get("input")
+                if tool_args is None:
+                    continue
+                parts.append(f"tool_use args: {_compact_json(tool_args)}")
+            elif block.get("type") == "tool_result":
+                parts.extend(_extract_tool_result_text(block))
         return "\n\n".join(parts)
     return ""
-
-
-def _is_tool_result_only(content) -> bool:
-    """Return True if every block in content is a tool_result block."""
-    if not isinstance(content, list) or not content:
-        return False
-    return all(
-        isinstance(b, dict) and b.get("type") == "tool_result"
-        for b in content
-    )
 
 
 def _session_title_from_path(file_path: Path) -> str | None:
@@ -218,10 +240,6 @@ class CoworkIngester(BaseIngester):
                 continue
 
             content_raw = msg_data.get("content", "")
-
-            # Skip user records that are purely tool results (not human text)
-            if role == Role.USER and _is_tool_result_only(content_raw):
-                continue
 
             content = _extract_text(content_raw)
             if not content:
