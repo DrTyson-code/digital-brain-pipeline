@@ -4,6 +4,10 @@ Cowork (Claude Agent Mode / Dispatch) stores session transcripts as JSONL files.
 The default search root is:
   ~/Library/Application Support/Claude/local-agent-mode-sessions/
 
+This ingester reads the inner session transcript files under
+.claude/projects/.../*.jsonl. Outer audit.jsonl files describe Agent Mode
+runtime bookkeeping and are skipped during discovery.
+
 Each file contains one JSON object per line representing a message event:
 
   - type "user": user turn — content is a string or list of blocks
