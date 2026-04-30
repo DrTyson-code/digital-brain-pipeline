@@ -17,3 +17,10 @@ env/
 data/
 /output/
 .dbp_cache/
+
+# Per-machine Claude Code state
+.claude/
+
+# Local .env backups (e.g. credential rotations)
+.env.bak
+.env.bak.*
