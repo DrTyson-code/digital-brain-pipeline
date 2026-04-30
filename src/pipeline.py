@@ -541,7 +541,7 @@ class Pipeline:
             return []
         return sorted(
             (path for path in backup_root.iterdir() if path.is_dir()),
-            key=lambda path: path.name,
+            key=lambda path: path.stat().st_mtime,
         )
 
     @classmethod
