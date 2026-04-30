@@ -9,7 +9,7 @@ build/
 .venv/
 venv/
 env/
-.env
+.env*
 *.log
 .mypy_cache/
 .pytest_cache/
@@ -20,7 +20,3 @@ data/
 
 # Per-machine Claude Code state
 .claude/
-
-# Local .env backups (e.g. credential rotations)
-.env.bak
-.env.bak.*
