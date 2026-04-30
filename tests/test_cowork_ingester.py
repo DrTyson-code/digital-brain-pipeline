@@ -1,6 +1,7 @@
 """Tests for the Cowork/Dispatch session JSONL ingester."""
 
 import json
+from copy import deepcopy
 import tempfile
 from pathlib import Path
 
@@ -251,6 +252,47 @@ class TestSidechainFiltering:
         ingester = CoworkIngester(min_messages=1)
         conv = ingester.ingest(path)[0]
         assert conv.message_count == 2  # 1 user + 1 non-sidechain assistant
+
+
+class TestReplayLayerBoundary:
+    def test_cowork_inner_files_have_no_isreplay_field(self):
+        inner_records = [
+            {
+                "type": "user",
+                "uuid": "msg-u-replay",
+                "timestamp": "2026-04-03T09:00:00.000Z",
+                "sessionId": "sess-replay-boundary",
+                "message": {"role": "user", "content": "Inner user message"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "msg-a-replay",
+                "timestamp": "2026-04-03T09:00:01.000Z",
+                "sessionId": "sess-replay-boundary",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Inner assistant reply"}],
+                },
+            },
+        ]
+        assert all("isReplay" not in record for record in inner_records)
+
+        path = _write_jsonl(inner_records)
+        ingester = CoworkIngester(min_messages=1)
+        conv = ingester.ingest(path)[0]
+        assert conv.message_count == 2
+        assert [m.content for m in conv.messages] == [
+            "Inner user message",
+            "Inner assistant reply",
+        ]
+
+        unexpected_inner_records = deepcopy(inner_records)
+        unexpected_inner_records[1]["isReplay"] = True
+
+        path = _write_jsonl(unexpected_inner_records)
+        conv = ingester.ingest(path)[0]
+        assert conv.message_count == 2
+        assert conv.assistant_messages[0].content == "Inner assistant reply"
 
 
 class TestMinMessagesFilter:

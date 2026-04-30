@@ -137,7 +137,10 @@ class CoworkIngester(BaseIngester):
         """Recursively discover and parse all session .jsonl files."""
         conversations: list[Conversation] = []
         for jsonl_file in sorted(directory.rglob("*.jsonl")):
-            # Skip audit logs and subagent traces
+            # Skip audit logs and subagent traces. The outer audit.jsonl layer is
+            # where isReplay appears; inner .claude/projects/... session JSONL
+            # records do not carry that field, so no per-record isReplay filter
+            # belongs in the inner transcript parser.
             if jsonl_file.name.startswith("audit") and jsonl_file.name.endswith(".jsonl"):
                 continue
             if "subagents" in jsonl_file.parts:
