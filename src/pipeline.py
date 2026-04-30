@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -415,6 +417,7 @@ class Pipeline:
             self._run_anki_export(all_concepts, curation)
 
         # Stage 6: Output
+        self._backup_vault("Stage 6 Obsidian write")
         logger.info("Stage 6: Writing to Obsidian vault...")
         writer = ObsidianWriter(
             vault_path=self.config.vault_path,
@@ -429,6 +432,7 @@ class Pipeline:
 
         # Stage 7: MOCs
         if self.config.generate_mocs:
+            self._backup_vault("Stage 7 MOC generation")
             logger.info("Stage 7: Generating Maps of Content...")
             moc_gen = MOCGenerator(
                 vault_path=self.config.vault_path,
@@ -460,6 +464,40 @@ class Pipeline:
         )
         logger.info(result.summary)
         return result
+
+    def _backup_vault(self, stage_name: str) -> Path | None:
+        """Snapshot the vault output directory before a write stage.
+
+        Missing vaults are expected on first run, so absence is logged and the
+        write continues. If an existing vault cannot be copied, the exception is
+        allowed to abort before the stage mutates output.
+        """
+        vault = self.config.vault_path
+        if not vault.exists():
+            logger.info(
+                "Skipping vault backup before %s; vault path does not exist: %s",
+                stage_name,
+                vault,
+            )
+            return None
+
+        backup_root = vault.parent / ".backup"
+        backup_root.mkdir(parents=True, exist_ok=True)
+
+        dest = self._next_backup_path(backup_root)
+        shutil.copytree(vault, dest)
+        logger.info("Vault snapshot before %s written to %s", stage_name, dest)
+        return dest
+
+    @staticmethod
+    def _next_backup_path(backup_root: Path) -> Path:
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        dest = backup_root / timestamp
+        suffix = 1
+        while dest.exists():
+            dest = backup_root / f"{timestamp}-{suffix:02d}"
+            suffix += 1
+        return dest
 
     def _run_anki_export(
         self, concepts: list[Concept], curation: CurationResult
