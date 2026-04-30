@@ -229,7 +229,8 @@ class CoworkIngester(BaseIngester):
             if rec_type not in ("user", "assistant"):
                 continue
 
-            # Skip internal sidechain records (tool result branches)
+            # Skip agent-internal sidechain scratch work from research subagents;
+            # it is not user-facing dialogue for brain-ingest semantics.
             if record.get("isSidechain"):
                 continue
 
