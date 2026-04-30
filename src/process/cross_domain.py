@@ -30,6 +30,7 @@ import yaml
 from src.models.concept import Concept
 from src.models.entity import Entity
 from src.search.embedder import NoteEmbedder
+from src.utils.io import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -568,7 +569,7 @@ class CrossDomainSynthesizer:
             "```\n",
         ]
 
-        moc_path.write_text("\n".join(lines), encoding="utf-8")
+        atomic_write(moc_path, "\n".join(lines))
         logger.info("Cross-domain MOC written to %s", moc_path)
         return moc_path
 
@@ -737,7 +738,7 @@ class CrossDomainSynthesizer:
         content = f"---\n{fm_str}---\n\n" + "\n".join(lines)
 
         try:
-            file_path.write_text(content, encoding="utf-8")
+            atomic_write(file_path, content)
             return file_path
         except OSError as exc:
             logger.error("Failed to write synthesis note %s: %s", file_path, exc)

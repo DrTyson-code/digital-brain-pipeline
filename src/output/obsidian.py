@@ -21,6 +21,7 @@ from src.models.entity import Entity, EntityType
 from src.models.message import Conversation
 from src.models.relationship import Relationship
 from src.process.review_queue import CurationResult
+from src.utils.io import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ class ObsidianWriter:
         fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
 
         content = f"---\n{fm_str}---\n\n{body}"
-        file_path.write_text(content, encoding="utf-8")
+        atomic_write(file_path, content, root=self.vault_path)
         return file_path
 
     @staticmethod
