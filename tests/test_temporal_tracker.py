@@ -191,3 +191,47 @@ def test_already_superseded_is_not_superseded_again():
     # d0 should be superseded by d1 (first match in chronological order)
     if statuses[d0.id].status == "superseded":
         assert statuses[d0.id].superseded_by_id == d1.id
+
+
+def test_track_handles_mixed_tz_naive_and_aware_dates():
+    """Regression for the 2026-05-01 nightly crash: temporal_tracker
+    must not raise TypeError when concepts arrive with a mix of
+    tz-naive and tz-aware created_at values."""
+    aware = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    naive = datetime(2024, 1, 8)  # no tzinfo — the bug condition
+
+    conv_aware = _conv("c_aware", aware)
+    naive_concept = _decision(
+        "Use PostgreSQL for the main database — switched to MySQL instead",
+        conv_id=None,
+    )
+    naive_concept.created_at = naive  # force the naive condition
+
+    older = _decision("Use PostgreSQL for the main database", conv_id="c_aware")
+
+    tracker = TemporalTracker()
+    statuses = tracker.track(
+        [older, naive_concept],
+        conversations=[conv_aware],
+    )
+    assert older.id in statuses
+    assert naive_concept.id in statuses
+
+
+def test_detect_stale_knowledge_handles_mixed_tz():
+    """Second latent occurrence: detect_stale_knowledge subtracts now
+    from ref_date. Must not raise on mixed-tz inputs."""
+    aware_old = datetime.now(timezone.utc) - timedelta(days=200)
+    d = _decision("Old aware decision")
+    d.confidence = 0.9
+    statuses = {
+        d.id: ConceptStatus(
+            concept_id=d.id,
+            status="active",
+            valid_from=aware_old,
+            last_confirmed=None,  # force fallback to aware valid_from
+        )
+    }
+    tracker = TemporalTracker()
+    stale = tracker.detect_stale_knowledge([d], statuses, stale_days=90)
+    assert d.id in stale

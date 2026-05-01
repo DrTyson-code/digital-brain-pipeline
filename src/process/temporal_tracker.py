@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional
 
@@ -68,6 +68,15 @@ class ConceptStatus:
     stale_since: Optional[str] = None  # ISO date when marked stale
 
 
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Return *dt* normalized to tz-aware UTC; assume naive datetimes are UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @dataclass
 class TemporalTracker:
     """Assign lifecycle status to decisions and action items."""
@@ -99,8 +108,8 @@ class TemporalTracker:
             if c.source_conversation_id:
                 d = conv_dates.get(c.source_conversation_id)
                 if d is not None:
-                    return d
-            return c.created_at
+                    return _ensure_utc(d)
+            return _ensure_utc(c.created_at)
 
         # Initialise statuses for ALL concepts (not just tracked types)
         statuses: Dict[str, ConceptStatus] = {}
@@ -191,7 +200,7 @@ class TemporalTracker:
         Returns:
             List of concept IDs that were newly marked stale.
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         stale_ids: List[str] = []
 
         for concept in concepts:
@@ -204,7 +213,7 @@ class TemporalTracker:
             if st is None or st.status in ("superseded", "completed", "abandoned"):
                 continue
 
-            ref_date = st.last_confirmed or st.valid_from
+            ref_date = _ensure_utc(st.last_confirmed or st.valid_from)
             if ref_date is None:
                 continue
 
