@@ -47,7 +47,7 @@ export PYTHONPATH="$PROJECT_DIR:${PYTHONPATH:-}"
 # Process latest Apple Health export (non-fatal if it fails)
 {
     echo "Processing Apple Health export..."
-    /opt/homebrew/bin/python3.12 ~/Desktop/brain-tools/process_health_export.py || {
+    /opt/homebrew/bin/python3.12 ~/code/brain-tools/process_health_export.py || {
         exit_code=$?
         echo "WARNING: Apple Health export processing failed with exit code $exit_code" >&2
     }

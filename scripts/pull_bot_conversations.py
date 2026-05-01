@@ -2,7 +2,7 @@
 """Pull fitness bot conversations from Railway and write to claude-export directory.
 
 Reads BOT_URL and WEBHOOK_SECRET_TOKEN from environment.
-Writes ~/Desktop/claude-export/fitness_bot_conversations.json in Claude export format.
+Writes ~/code/claude-export/fitness_bot_conversations.json in Claude export format.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def main() -> int:
         logger.error(f"Could not reach bot at {bot_url}: {e.reason}")
         return 0  # non-fatal
 
-    out_path = Path("~/Desktop/claude-export/fitness_bot_conversations.json").expanduser()
+    out_path = Path("~/code/claude-export/fitness_bot_conversations.json").expanduser()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 

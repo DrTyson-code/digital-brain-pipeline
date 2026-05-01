@@ -20,10 +20,10 @@ backup:
 ingest:
   # Directories to scan for export files
   sources:
-    claude: ~/Desktop/claude-export
+    claude: ~/code/claude-export
     # Path to a Google Calendar JSON export produced by scripts/export_calendar.py
     # Set to null or omit to skip calendar ingestion
-    calendar: ~/Desktop/calendar-export
+    calendar: null
     # Cowork/Dispatch session transcripts (Claude Agent Mode)
     cowork: ~/Library/Application Support/Claude/local-agent-mode-sessions
   # Skip conversations (or calendar days) shorter than this many messages/events
