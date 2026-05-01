@@ -1,0 +1,10 @@
+{"timestamp":"2026-05-01T19:21:20.000Z","type":"session_meta","payload":{"id":"019de4fc-redacted-0000-0000-000000000000","timestamp":"2026-05-01T19:21:16.621Z","cwd":"/Users/example/code/digital-brain-pipeline","originator":"codex_exec","cli_version":"0.126.0-alpha.8","source":"exec","model_provider":"openai"}}
+{"timestamp":"2026-05-01T19:21:20.001Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions>\nRedacted permission shim."}]}}
+{"timestamp":"2026-05-01T19:21:20.002Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Use the repository's existing ingestion patterns."}]}}
+{"timestamp":"2026-05-01T19:21:20.003Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>/Users/example</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-05-01T19:21:20.004Z","type":"turn_context","payload":{"turn_id":"turn-redacted","cwd":"/Users/example/code/digital-brain-pipeline","current_date":"2026-05-01","timezone":"America/New_York","model":"gpt-5.5"}}
+{"timestamp":"2026-05-01T19:21:21.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Implement Codex ingestion for the digital brain pipeline."}]}}
+{"timestamp":"2026-05-01T19:21:22.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will add a Codex ingester and focused tests."}]}}
+{"timestamp":"2026-05-01T19:21:23.000Z","type":"response_item","payload":{"type":"function_call","call_id":"call-redacted","name":"exec_command","arguments":"{\"cmd\":\"pytest tests/test_codex_ingest.py -v\"}"}}
+{"timestamp":"2026-05-01T19:21:24.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-redacted","output":"tests passed"}}
+{"timestamp":"2026-05-01T19:21:25.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}}}

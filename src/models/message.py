@@ -49,6 +49,8 @@ class Conversation(OntologyObject):
     title: Optional[str] = None
     messages: List[ChatMessage] = Field(default_factory=list)
     platform: Platform
+    author: Optional[str] = None
+    source: Optional[str] = None
     updated_at: Optional[datetime] = None
     topics: List[str] = Field(default_factory=list)
     summary: Optional[str] = None

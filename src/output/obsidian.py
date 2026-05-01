@@ -120,6 +120,10 @@ class ObsidianWriter:
             "tags": [f"{self.tag_prefix}/conversation", f"{self.tag_prefix}/{conv.platform.value}"],
             "message_count": conv.message_count,
         }
+        if conv.author:
+            frontmatter["author"] = conv.author
+        if conv.source:
+            frontmatter["source"] = conv.source
         if conv.topics:
             frontmatter["topics"] = conv.topics
         if conv.summary:
@@ -138,6 +142,10 @@ class ObsidianWriter:
         if self.dataview_fields:
             lines.append(f"platform:: {conv.platform.value}")
             lines.append(f"date:: {_format_date(conv.created_at, self.date_format)}")
+            if conv.author:
+                lines.append(f"author:: {conv.author}")
+            if conv.source:
+                lines.append(f"source:: {conv.source}")
             lines.append(f"messages:: {conv.message_count}")
             if conv.topics:
                 topic_links = ", ".join(f"[[{t}]]" for t in conv.topics)

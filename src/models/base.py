@@ -27,6 +27,7 @@ class Platform(StrEnum):
     GEMINI = "gemini"
     CALENDAR = "calendar"
     COWORK = "cowork"
+    CODEX = "codex"
 
 
 class OntologyObject(BaseModel):
