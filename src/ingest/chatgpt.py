@@ -95,12 +95,18 @@ class ChatGPTIngester(BaseIngester):
         created_at = self._epoch_to_datetime(data.get("create_time"))
         if not created_at:
             return None
+        model_id = next((m.model for m in messages if m.model), None)
 
         return Conversation(
             id=conv_id,
             title=data.get("title"),
             messages=messages,
             platform=Platform.CHATGPT,
+            author="chat-chatgpt",
+            session_id=conv_id,
+            created_at_iso=created_at.isoformat(),
+            model_id=model_id,
+            ingested_by="pipeline-chatgpt-ingester",
             created_at=created_at,
             updated_at=self._epoch_to_datetime(data.get("update_time")),
         )

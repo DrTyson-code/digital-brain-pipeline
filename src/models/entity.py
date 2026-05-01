@@ -28,6 +28,11 @@ class Entity(OntologyObject):
     aliases: List[str] = Field(default_factory=list)
     first_seen: Optional[datetime] = None
     last_seen: Optional[datetime] = None
+    author: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at_iso: Optional[str] = None
+    model_id: Optional[str] = None
+    ingested_by: Optional[str] = None
     properties: Dict[str, Any] = Field(default_factory=dict)
     source_conversations: List[str] = Field(default_factory=list)
 

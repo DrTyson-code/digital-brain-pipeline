@@ -95,6 +95,11 @@ class ClaudeIngester(BaseIngester):
             title=data.get("name"),
             messages=messages,
             platform=Platform.CLAUDE,
+            author="chat-claude",
+            session_id=conv_id,
+            created_at_iso=created_at.isoformat(),
+            model_id=next((m.model for m in messages if m.model), None),
+            ingested_by="pipeline-claude-export",
             created_at=created_at,
             updated_at=self._parse_timestamp(data.get("updated_at")),
         )

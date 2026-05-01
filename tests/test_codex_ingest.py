@@ -35,11 +35,13 @@ def test_fixture_session_returns_conversation_with_codex_metadata():
     assert conv.id == "019de4fc-redacted-0000-0000-000000000000"
     assert conv.platform == Platform.CODEX
     assert conv.title == "Codex: implement-codex-ingestion-for-the-digital-brain-pipeline"
-    assert conv.author == (
+    assert conv.author == "codex-cli"
+    assert conv.session_id == (
         "codex-implement-codex-ingestion-for-the-digital-brain-pipeline-"
         "2026-05-01-192116"
     )
-    assert conv.source == conv.author
+    assert conv.source == conv.session_id
+    assert conv.ingested_by == "pipeline-codex-ingester"
     assert conv.created_at.isoformat() == "2026-05-01T19:21:16.621000+00:00"
 
 

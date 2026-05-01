@@ -125,6 +125,10 @@ def _session_title_from_cwd(cwd: str | None) -> str | None:
     return None
 
 
+def _first_model(messages: list[ChatMessage]) -> str | None:
+    return next((msg.model for msg in messages if msg.model), None)
+
+
 class CoworkIngester(BaseIngester):
     """Parse Cowork/Dispatch session JSONL transcript files."""
 
@@ -296,12 +300,19 @@ class CoworkIngester(BaseIngester):
             or _session_title_from_cwd(first_cwd)
             or session_id
         )
+        created_at = first_ts or datetime.now(timezone.utc)
 
         return Conversation(
             id=session_id,
             title=title,
             messages=messages,
             platform=Platform.COWORK,
-            created_at=first_ts or datetime.now(),
+            author="cowork-claude",
+            session_id=title,
+            session_slug=title,
+            created_at_iso=created_at.isoformat(),
+            model_id=_first_model(messages),
+            ingested_by="pipeline-cowork-ingester",
+            created_at=created_at,
             updated_at=last_ts,
         )

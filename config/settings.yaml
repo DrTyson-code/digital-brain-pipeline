@@ -13,6 +13,10 @@ vault:
     action_items: "Action-Items"
     calendar: "Calendar"
 
+core_dirs:
+  shared: ~/Vault/Claude-Brain/Core/shared
+  agents: ~/Vault/Claude-Brain/Core/agents
+
 backup:
   max_count: 7
   max_total_size_gb: 10

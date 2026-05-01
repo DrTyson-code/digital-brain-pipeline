@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from src.models.base import OntologyObject, Platform
+from src.models.authorship import AGENT_IDS, is_valid_agent_id
 from src.models.concept import Concept, ConceptType
 from src.models.entity import Entity, EntityType
 from src.models.message import ChatMessage, Conversation, Role
@@ -19,6 +20,28 @@ def test_platform_enum():
     assert Platform.CLAUDE == "claude"
     assert Platform.CHATGPT == "chatgpt"
     assert Platform.GEMINI == "gemini"
+
+
+def test_agent_id_taxonomy():
+    expected = {
+        "chat-claude",
+        "cowork-claude",
+        "codex-cli",
+        "chat-chatgpt",
+        "chat-gemini",
+        "william",
+        "pipeline-synth-cluster",
+        "pipeline-entity-extractor",
+        "pipeline-moc-generator",
+        "pipeline-claude-export",
+        "pipeline-cowork-ingester",
+        "pipeline-codex-ingester",
+        "pipeline-concept-extractor",
+    }
+    assert expected <= AGENT_IDS
+    assert is_valid_agent_id("chat-claude")
+    assert is_valid_agent_id("pipeline-concept-extractor")
+    assert not is_valid_agent_id("unknown-agent")
 
 
 def test_chat_message():

@@ -203,6 +203,7 @@ class PipelineConfig:
 
     vault_path: Path = Path("~/Vault")
     source_dirs: Dict[str, Path] = field(default_factory=dict)
+    core_dirs: Dict[str, Path] = field(default_factory=dict)
     min_messages: int = 2
     confidence_threshold: float = 0.5
     max_topics: int = 5
@@ -224,6 +225,7 @@ class PipelineConfig:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
 
         vault_cfg = data.get("vault", {})
+        core_cfg = data.get("core_dirs", {})
         ingest_cfg = data.get("ingest", {})
         proc_cfg = data.get("processing", {})
         out_cfg = data.get("output", {}).get("obsidian", {})
@@ -238,9 +240,16 @@ class PipelineConfig:
                 continue
             source_dirs[platform] = Path(dir_path).expanduser()
 
+        core_dirs = {
+            name: Path(dir_path).expanduser()
+            for name, dir_path in core_cfg.items()
+            if dir_path
+        }
+
         return cls(
             vault_path=Path(vault_cfg.get("path", "~/Vault")).expanduser(),
             source_dirs=source_dirs,
+            core_dirs=core_dirs,
             min_messages=ingest_cfg.get("min_messages", 2),
             confidence_threshold=proc_cfg.get("confidence_threshold", 0.5),
             max_topics=proc_cfg.get("max_topics_per_conversation", 5),

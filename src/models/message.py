@@ -50,6 +50,11 @@ class Conversation(OntologyObject):
     messages: List[ChatMessage] = Field(default_factory=list)
     platform: Platform
     author: Optional[str] = None
+    session_id: Optional[str] = None
+    session_slug: Optional[str] = None
+    created_at_iso: Optional[str] = None
+    model_id: Optional[str] = None
+    ingested_by: Optional[str] = None
     source: Optional[str] = None
     updated_at: Optional[datetime] = None
     topics: List[str] = Field(default_factory=list)
