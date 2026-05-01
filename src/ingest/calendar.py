@@ -383,6 +383,10 @@ class CalendarIngester(BaseIngester):
             title=f"{day_str} Schedule",
             messages=messages,
             platform=Platform.CALENDAR,
+            author="william",
+            session_id=day_str,
+            created_at_iso=day_dt.isoformat(),
+            ingested_by="pipeline-calendar-ingester",
             created_at=day_dt,
             updated_at=day_dt,
             topics=topics,
@@ -406,6 +410,11 @@ class CalendarIngester(BaseIngester):
             frontmatter = {
                 "type": "calendar",
                 "date": day_str,
+                "memory_type": "episodic",
+                "author": "william",
+                "session_id": conv.session_id or conv.id,
+                "created_at": conv.created_at_iso or conv.created_at.isoformat(),
+                "ingested_by": "pipeline-calendar-ingester",
                 "event_count": conv.message_count,
                 "attendees": sorted(set(all_attendees)),
                 "tags": [f"calendar/{t}" for t in (conv.topics or [])],
@@ -449,6 +458,15 @@ class CalendarIngester(BaseIngester):
             frontmatter = {
                 "type": "meeting",
                 "date": day_str,
+                "memory_type": "episodic",
+                "author": "william",
+                "session_id": day_str,
+                "created_at": (
+                    msg.timestamp.isoformat()
+                    if msg.timestamp
+                    else datetime.now(timezone.utc).isoformat()
+                ),
+                "ingested_by": "pipeline-calendar-ingester",
                 "attendees": attendees,
                 "tags": ["calendar/meeting"],
             }

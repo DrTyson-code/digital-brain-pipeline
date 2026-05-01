@@ -27,6 +27,11 @@ class Concept(OntologyObject):
     context: Optional[str] = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     source_conversation_id: Optional[str] = None
+    author: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at_iso: Optional[str] = None
+    model_id: Optional[str] = None
+    ingested_by: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
 
     @property

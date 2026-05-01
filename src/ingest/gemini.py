@@ -98,6 +98,11 @@ class GeminiIngester(BaseIngester):
             title=data.get("name"),
             messages=messages,
             platform=Platform.GEMINI,
+            author="chat-gemini",
+            session_id=conv_id,
+            created_at_iso=created_at.isoformat(),
+            model_id=self._conversation_model_id(data, messages),
+            ingested_by="pipeline-gemini-ingester",
             created_at=created_at,
             updated_at=self._parse_timestamp(data.get("update_time")),
         )
@@ -128,7 +133,22 @@ class GeminiIngester(BaseIngester):
             content=content,
             timestamp=self._parse_timestamp(entry.get("create_time")),
             platform=Platform.GEMINI,
+            model=self._entry_model_id(entry),
         )
+
+    @staticmethod
+    def _entry_model_id(entry: dict) -> str | None:
+        metadata = entry.get("metadata", {})
+        if isinstance(metadata, dict):
+            return metadata.get("model_slug")
+        return None
+
+    @staticmethod
+    def _conversation_model_id(data: dict, messages: list[ChatMessage]) -> str | None:
+        metadata = data.get("metadata", {})
+        if isinstance(metadata, dict) and metadata.get("model_slug"):
+            return metadata["model_slug"]
+        return next((msg.model for msg in messages if msg.model), None)
 
     @staticmethod
     def _parse_timestamp(value: str | None) -> datetime | None:
