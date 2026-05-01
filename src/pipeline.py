@@ -22,7 +22,13 @@ from typing import Dict, List, Optional
 
 import yaml
 
-from src.ingest import ClaudeIngester, ChatGPTIngester, GeminiIngester, CoworkIngester
+from src.ingest import (
+    ClaudeIngester,
+    ChatGPTIngester,
+    GeminiIngester,
+    CoworkIngester,
+    CodexIngester,
+)
 from src.models.base import Platform
 from src.models.concept import Concept
 from src.models.entity import Entity
@@ -228,6 +234,8 @@ class PipelineConfig:
 
         source_dirs = {}
         for platform, dir_path in ingest_cfg.get("sources", {}).items():
+            if dir_path is None:
+                continue
             source_dirs[platform] = Path(dir_path).expanduser()
 
         return cls(
@@ -277,6 +285,7 @@ INGESTERS = {
     "chatgpt": ChatGPTIngester,
     "gemini": GeminiIngester,
     "cowork": CoworkIngester,
+    "codex": CodexIngester,
 }
 
 

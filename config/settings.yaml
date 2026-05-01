@@ -26,6 +26,8 @@ ingest:
     calendar: null
     # Cowork/Dispatch session transcripts (Claude Agent Mode)
     cowork: ~/Library/Application Support/Claude/local-agent-mode-sessions
+    # Codex CLI session transcripts
+    codex: ~/.codex/sessions
   # Skip conversations (or calendar days) shorter than this many messages/events
   min_messages: 2
   calendar:

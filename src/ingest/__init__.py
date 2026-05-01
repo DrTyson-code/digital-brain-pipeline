@@ -6,6 +6,7 @@ from src.ingest.chatgpt import ChatGPTIngester
 from src.ingest.claude import ClaudeIngester
 from src.ingest.gemini import GeminiIngester
 from src.ingest.cowork import CoworkIngester
+from src.ingest.codex import CodexIngester
 
 __all__ = [
     "BaseIngester",
@@ -14,4 +15,5 @@ __all__ = [
     "ChatGPTIngester",
     "GeminiIngester",
     "CoworkIngester",
+    "CodexIngester",
 ]
