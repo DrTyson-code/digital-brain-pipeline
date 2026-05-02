@@ -27,6 +27,7 @@ from src.models.relationship import Relationship, RelationshipType
 
 logger = logging.getLogger(__name__)
 
+
 # Each tuple: (positive_pattern, negative_pattern).
 # A contradiction is signalled when one text matches the positive form and the
 # other matches the negative form for the same pattern pair.
@@ -48,6 +49,7 @@ _NEGATION_PAIRS: List[Tuple[re.Pattern[str], re.Pattern[str]]] = [
         re.compile(r"\bdon't\b|\bdoesn't\b|\bdo\s+not\b|\bdoes\s+not\b", re.IGNORECASE),
     ),
 ]
+
 
 # Concept types eligible for contradiction checks
 _CHECKED_TYPES = (ConceptType.DECISION, ConceptType.INSIGHT)
@@ -77,9 +79,13 @@ class ContradictionDetector:
         for concept in candidates:
             by_type.setdefault(concept.concept_type.value, []).append(concept)
 
+        # Track per-type pair counts for observability (denominator for hit rate)
+        pairs_compared_by_type: Dict[str, int] = {t: 0 for t in by_type}
         contradictions: List[Relationship] = []
+        # Keep a small sample of contradiction examples for the summary log
+        examples: List[Tuple[str, str]] = []
 
-        for type_concepts in by_type.values():
+        for type_name, type_concepts in by_type.items():
             for i, a in enumerate(type_concepts):
                 for b in type_concepts[i + 1:]:
                     # Skip same-conversation pairs (rephrasing is normal)
@@ -88,16 +94,16 @@ class ContradictionDetector:
                         and a.source_conversation_id == b.source_conversation_id
                     ):
                         continue
-
+                    pairs_compared_by_type[type_name] = (
+                        pairs_compared_by_type.get(type_name, 0) + 1
+                    )
                     similarity = SequenceMatcher(
                         None,
                         a.content.lower(),
                         b.content.lower(),
                     ).ratio()
-
                     if similarity < self.similarity_threshold:
                         continue
-
                     if self._has_contradiction(a.content, b.content):
                         rel = Relationship(
                             source_id=a.id,
@@ -109,6 +115,10 @@ class ContradictionDetector:
                             ],
                         )
                         contradictions.append(rel)
+                        if len(examples) < 3:
+                            examples.append(
+                                (a.content[:80], b.content[:80])
+                            )
                         logger.debug(
                             "Contradiction: %s ↔ %s (similarity=%.2f)",
                             a.id,
@@ -116,11 +126,35 @@ class ContradictionDetector:
                             similarity,
                         )
 
-        logger.info(
-            "Contradiction detection: %d candidates, %d contradictions found",
-            len(candidates),
-            len(contradictions),
-        )
+        total_pairs = sum(pairs_compared_by_type.values())
+        if contradictions:
+            hit_rate = (
+                len(contradictions) / total_pairs * 100.0 if total_pairs else 0.0
+            )
+            logger.info(
+                "Contradiction detection: %d candidates, %d cross-conversation "
+                "pairs compared, %d contradictions found (%.3f%% hit rate)",
+                len(candidates),
+                total_pairs,
+                len(contradictions),
+                hit_rate,
+            )
+            for ex_a, ex_b in examples:
+                logger.info("Contradiction example: %r ↔ %r", ex_a, ex_b)
+        else:
+            # Make absence-of-signal explicit so silent zero is distinguishable
+            # from "stage didn't run." A consistent zero across runs is itself
+            # a calibration data point — possibly threshold too restrictive,
+            # or possibly working correctly on a corpus without conflicts.
+            logger.info(
+                "Contradiction detection: %d candidates, %d cross-conversation "
+                "pairs compared, 0 contradictions found "
+                "(threshold=%.2f; persistent zero may indicate restrictive threshold)",
+                len(candidates),
+                total_pairs,
+                self.similarity_threshold,
+            )
+
         return contradictions
 
     # ------------------------------------------------------------------
@@ -140,7 +174,6 @@ class ContradictionDetector:
         for positive_pat, negative_pat in _NEGATION_PAIRS:
             a_neg = bool(negative_pat.search(text_a))
             b_neg = bool(negative_pat.search(text_b))
-
             if a_neg == b_neg:
                 continue  # same polarity — not a contradiction for this pair
 

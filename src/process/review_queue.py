@@ -34,6 +34,7 @@ from src.process.temporal_tracker import ConceptStatus
 
 logger = logging.getLogger(__name__)
 
+
 _CORRECTIONS_FOLDER = "_corrections"
 
 
@@ -88,6 +89,21 @@ class CurationResult:
 # ---------------------------------------------------------------------------
 
 
+def _categorize_reason(reason: str) -> str:
+    """Map a free-form reason string to a coarse category for breakdown logging."""
+    if reason.startswith("Low confidence"):
+        return "low_confidence"
+    if reason.startswith("Entity merge target"):
+        return "entity_merge_review"
+    if reason.startswith("Contradicts"):
+        return "contradiction"
+    if reason.startswith("Status changed"):
+        return "status_change"
+    if reason.startswith("Stale knowledge"):
+        return "stale"
+    return "other"
+
+
 @dataclass
 class ReviewQueueGenerator:
     """Generate a prioritised review queue from curation outputs."""
@@ -132,7 +148,6 @@ class ReviewQueueGenerator:
                 canonical_merge_counts[canonical_id] = (
                     canonical_merge_counts.get(canonical_id, 0) + 1
                 )
-
             entity_ids = {e.id for e in entities}
             for canonical_id, count in canonical_merge_counts.items():
                 if canonical_id in entity_ids and canonical_id not in review_ids:
@@ -202,6 +217,31 @@ class ReviewQueueGenerator:
             len(items),
             len(review_ids),
         )
+
+        # Breakdown by priority, object_type, and reason category
+        if items:
+            priority_counts: Dict[str, int] = {}
+            type_counts: Dict[str, int] = {}
+            reason_categories: Dict[str, int] = {}
+            for item in items:
+                priority_counts[item.priority] = priority_counts.get(item.priority, 0) + 1
+                type_counts[item.object_type] = type_counts.get(item.object_type, 0) + 1
+                cat = _categorize_reason(item.reason)
+                reason_categories[cat] = reason_categories.get(cat, 0) + 1
+
+            priority_str = ", ".join(
+                f"{p}={c}" for p, c in sorted(priority_counts.items(), key=lambda kv: -kv[1])
+            )
+            type_str = ", ".join(
+                f"{t}={c}" for t, c in sorted(type_counts.items(), key=lambda kv: -kv[1])
+            )
+            reason_str = ", ".join(
+                f"{r}={c}" for r, c in sorted(reason_categories.items(), key=lambda kv: -kv[1])
+            )
+            logger.info("Review queue by priority: %s", priority_str)
+            logger.info("Review queue by object_type: %s", type_str)
+            logger.info("Review queue by reason category: %s", reason_str)
+
         return items, review_ids
 
     def load_corrections(self, vault_path: Path) -> List[Dict[str, Any]]:

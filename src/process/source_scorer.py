@@ -26,6 +26,29 @@ from src.process.extractor import ExtractionResult
 logger = logging.getLogger(__name__)
 
 
+def _percentile(sorted_values: List[float], pct: float) -> float:
+    """Return the percentile (0-100) of a pre-sorted list. Empty list → 0.0."""
+    if not sorted_values:
+        return 0.0
+    if pct <= 0:
+        return sorted_values[0]
+    if pct >= 100:
+        return sorted_values[-1]
+    # Nearest-rank style — small data so exact interpolation isn't needed.
+    k = max(0, min(len(sorted_values) - 1, int(round((pct / 100.0) * (len(sorted_values) - 1)))))
+    return sorted_values[k]
+
+
+def _histogram_bins(values: List[float], num_bins: int = 5) -> List[int]:
+    """Bucket values in [0.0, 1.0] into num_bins equal-width bins. Returns counts."""
+    counts = [0] * num_bins
+    for v in values:
+        # Clamp to [0, 1) so v=1.0 falls in the last bin
+        idx = min(num_bins - 1, max(0, int(v * num_bins)))
+        counts[idx] += 1
+    return counts
+
+
 @dataclass
 class SourceScorer:
     """Compute a quality weight for each conversation.
@@ -102,8 +125,8 @@ class SourceScorer:
             + self.weight_topics * topic_score
             + self.weight_conclusions * conclusion_score
         )
-
         weight = max(0.0, min(1.0, raw))
+
         logger.debug(
             "Conversation %s scored %.3f "
             "(msgs=%d, words=%d, avg_len=%.0f, tools=%s, dur=%s, topics=%d, conclusions=%s)",
@@ -117,6 +140,7 @@ class SourceScorer:
             len(conversation.topics),
             has_conclusions,
         )
+
         return weight
 
     def score_batch(
@@ -144,13 +168,23 @@ class SourceScorer:
             weights[conv.id] = self.score(conv, ext)
 
         if weights:
-            avg = sum(weights.values()) / len(weights)
+            values = sorted(weights.values())
+            avg = sum(values) / len(values)
+            bins = _histogram_bins(values, num_bins=5)
             logger.info(
-                "Source scoring: %d conversations, avg weight=%.3f, "
-                "min=%.3f, max=%.3f",
-                len(weights),
+                "Source scoring: %d conversations, avg=%.3f, "
+                "min=%.3f, P50=%.3f, P95=%.3f, max=%.3f",
+                len(values),
                 avg,
-                min(weights.values()),
-                max(weights.values()),
+                values[0],
+                _percentile(values, 50),
+                _percentile(values, 95),
+                values[-1],
             )
+            logger.info(
+                "Source weight distribution (5 bins, 0.0-1.0): "
+                "[0.0-0.2]=%d, [0.2-0.4]=%d, [0.4-0.6]=%d, [0.6-0.8]=%d, [0.8-1.0]=%d",
+                bins[0], bins[1], bins[2], bins[3], bins[4],
+            )
+
         return weights
