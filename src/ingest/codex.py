@@ -20,14 +20,25 @@ _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
 
 
 def _parse_timestamp(value: str | None) -> datetime | None:
+    """Parse an ISO timestamp and return tz-aware UTC.
+
+    Defensive: any naive datetime is interpreted as UTC. This prevents
+    `naive > aware` TypeErrors when comparing timestamps across records
+    of mixed origin (mirrors the _ensure_utc pattern in
+    src.process.temporal_tracker, added 2026-05-01).
+    """
     if not value:
         return None
     try:
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except (TypeError, ValueError):
         return None
+    # Normalize to tz-aware UTC. Naive timestamps assumed UTC.
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _format_author_timestamp(value: datetime | None) -> str:
