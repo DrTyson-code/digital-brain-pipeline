@@ -45,6 +45,11 @@ processing:
   confidence_threshold: 0.5
   # Maximum number of topics to assign per conversation
   max_topics_per_conversation: 5
+  # Maximum concepts per conversation. Long Cowork-style monologue sessions can
+  # produce 1000+ regex matches that dominate Stage 3c merger time. The cap is
+  # applied at the extractor (primary) and merger (defensive backup). Set to 0
+  # to disable. Tune after observability data shows the actual distribution.
+  max_concepts_per_conversation: 200
   # Enable deduplication of entities across conversations
   deduplicate_entities: true
 

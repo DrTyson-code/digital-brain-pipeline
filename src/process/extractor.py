@@ -19,6 +19,15 @@ from src.models.message import Conversation
 
 logger = logging.getLogger(__name__)
 
+
+# Default per-conversation concept cap. Long Cowork-style monologue sessions
+# can produce 1000+ regex matches over the same patterns, which dominates
+# downstream Stage 3c merger time (O(n²) similarity matching). Capping at
+# the source preserves the most-informative concepts while bounding cost.
+# Configurable via PipelineConfig.max_concepts_per_conversation.
+DEFAULT_MAX_CONCEPTS_PER_CONVERSATION = 200
+
+
 # Patterns for action item detection
 ACTION_PATTERNS = [
     re.compile(r"(?:TODO|FIXME|HACK|ACTION):\s*(.+)", re.IGNORECASE),
@@ -68,13 +77,17 @@ class ExtractionResult:
 class EntityConceptExtractor:
     """Extract entities and concepts from conversations using pattern matching."""
 
-    def __init__(self, confidence_threshold: float = 0.5) -> None:
+    def __init__(
+        self,
+        confidence_threshold: float = 0.5,
+        max_concepts_per_conversation: int = DEFAULT_MAX_CONCEPTS_PER_CONVERSATION,
+    ) -> None:
         self.confidence_threshold = confidence_threshold
+        self.max_concepts_per_conversation = max_concepts_per_conversation
 
     def extract(self, conversation: Conversation) -> ExtractionResult:
         """Extract all entities and concepts from a conversation."""
         result = ExtractionResult(conversation_id=conversation.id)
-
         full_text = "\n".join(m.content for m in conversation.messages)
 
         result.entities.extend(self._extract_tools(full_text, conversation.id))
@@ -92,6 +105,27 @@ class EntityConceptExtractor:
                     source_conversation_id=conversation.id,
                     confidence=0.9,
                 )
+            )
+
+        # Bound per-conversation concept count. Without this, a long Cowork
+        # monologue can produce 1000+ regex matches that dominate Stage 3c
+        # merger runtime (O(n²)). Truncation preserves earlier-occurring
+        # matches (typically more semantically central in a conversation).
+        if (
+            self.max_concepts_per_conversation > 0
+            and len(result.concepts) > self.max_concepts_per_conversation
+        ):
+            original_count = len(result.concepts)
+            result.concepts = result.concepts[: self.max_concepts_per_conversation]
+            logger.warning(
+                "Concept cap applied for conversation %s: "
+                "truncated %d → %d (cap=%d). Long sessions with high "
+                "regex hit rates likely indicate noisy patterns rather than "
+                "1000+ distinct meaningful concepts.",
+                conversation.id,
+                original_count,
+                len(result.concepts),
+                self.max_concepts_per_conversation,
             )
 
         return result

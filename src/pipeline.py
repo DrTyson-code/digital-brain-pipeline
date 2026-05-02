@@ -207,6 +207,7 @@ class PipelineConfig:
     min_messages: int = 2
     confidence_threshold: float = 0.5
     max_topics: int = 5
+    max_concepts_per_conversation: int = 200
     deduplicate_entities: bool = True
     tag_prefix: str = "ai-brain"
     date_format: str = "%Y-%m-%d"
@@ -253,6 +254,9 @@ class PipelineConfig:
             min_messages=ingest_cfg.get("min_messages", 2),
             confidence_threshold=proc_cfg.get("confidence_threshold", 0.5),
             max_topics=proc_cfg.get("max_topics_per_conversation", 5),
+            max_concepts_per_conversation=proc_cfg.get(
+                "max_concepts_per_conversation", 200
+            ),
             deduplicate_entities=proc_cfg.get("deduplicate_entities", True),
             tag_prefix=out_cfg.get("tag_prefix", "ai-brain"),
             date_format=out_cfg.get("date_format", "%Y-%m-%d"),
@@ -343,7 +347,8 @@ class Pipeline:
         # Stage 3: Extract (rule-based)
         logger.info("Stage 3: Extracting entities and concepts...")
         extractor = EntityConceptExtractor(
-            confidence_threshold=self.config.confidence_threshold
+            confidence_threshold=self.config.confidence_threshold,
+            max_concepts_per_conversation=self.config.max_concepts_per_conversation,
         )
 
         mode = self.config.llm.extraction_mode
@@ -370,7 +375,8 @@ class Pipeline:
             from src.llm.merger import ExtractionMerger
 
             merger = ExtractionMerger(
-                similarity_threshold=self.config.llm.merge_similarity_threshold
+                similarity_threshold=self.config.llm.merge_similarity_threshold,
+                max_concepts_per_conversation=self.config.max_concepts_per_conversation,
             )
             extractions = merger.merge_batch(rule_extractions, llm_extractions)
         else:

@@ -63,7 +63,11 @@ class MergeStatistics:
 class ExtractionMerger:
     """Merge rule-based and LLM extraction results."""
 
-    def __init__(self, similarity_threshold: float = 0.85) -> None:
+    def __init__(
+        self,
+        similarity_threshold: float = 0.85,
+        max_concepts_per_conversation: int = 200,
+    ) -> None:
         """Initialize the merger.
 
         Args:
@@ -71,10 +75,19 @@ class ExtractionMerger:
                 considering two entity names as duplicates. Defaults to 0.85 (85%).
                 Uses simple character-based similarity (difflib.SequenceMatcher),
                 not fuzzy matching, to avoid extra dependencies.
+            max_concepts_per_conversation: Defensive upper bound on per-conversation
+                concept count. The merge loop is O(n*m) over rule and LLM concept
+                lists; without a cap, a long Cowork-style conversation that
+                produces 1000+ regex matches dominates pipeline runtime. The
+                primary cap is applied at the extractor (see EntityConceptExtractor.
+                max_concepts_per_conversation); this is a defensive backup for
+                cases where extractors produce volumes (e.g., future paths).
+                Set <= 0 to disable.
         """
         if not (0.0 <= similarity_threshold <= 1.0):
             raise ValueError("similarity_threshold must be between 0.0 and 1.0")
         self.similarity_threshold = similarity_threshold
+        self.max_concepts_per_conversation = max_concepts_per_conversation
 
     def merge(
         self, rule_result: ExtractionResult, llm_result: ExtractionResult
@@ -102,6 +115,11 @@ class ExtractionMerger:
             total_rule_concepts=len(rule_result.concepts),
             total_llm_concepts=len(llm_result.concepts),
         )
+
+        # Defensive cap on per-conversation concept counts. The merge below is
+        # O(n*m) over rule_result.concepts and llm_result.concepts; uncapped
+        # 1000+ concept lists from a single conversation dominate pipeline runtime.
+        rule_result, llm_result = self._cap_concepts(rule_result, llm_result)
 
         # Merge entities
         merged_entities = list(llm_result.entities)  # Start with LLM entities
@@ -179,6 +197,53 @@ class ExtractionMerger:
         )
 
         return merged
+
+    def _cap_concepts(
+        self,
+        rule_result: ExtractionResult,
+        llm_result: ExtractionResult,
+    ) -> tuple[ExtractionResult, ExtractionResult]:
+        """Truncate oversized concept lists with a warning.
+
+        Returns possibly-truncated copies. Original objects are not mutated.
+        """
+        cap = self.max_concepts_per_conversation
+        if cap <= 0:
+            return rule_result, llm_result
+
+        capped_rule = rule_result
+        capped_llm = llm_result
+
+        if len(rule_result.concepts) > cap:
+            logger.warning(
+                "Merger defensive cap: rule_result for conversation %s had %d "
+                "concepts, truncating to %d. Primary cap should apply at the "
+                "extractor; this fallback caught the overage.",
+                rule_result.conversation_id,
+                len(rule_result.concepts),
+                cap,
+            )
+            capped_rule = ExtractionResult(
+                conversation_id=rule_result.conversation_id,
+                entities=rule_result.entities,
+                concepts=rule_result.concepts[:cap],
+            )
+
+        if len(llm_result.concepts) > cap:
+            logger.warning(
+                "Merger defensive cap: llm_result for conversation %s had %d "
+                "concepts, truncating to %d.",
+                llm_result.conversation_id,
+                len(llm_result.concepts),
+                cap,
+            )
+            capped_llm = ExtractionResult(
+                conversation_id=llm_result.conversation_id,
+                entities=llm_result.entities,
+                concepts=llm_result.concepts[:cap],
+            )
+
+        return capped_rule, capped_llm
 
     def merge_batch(
         self,
