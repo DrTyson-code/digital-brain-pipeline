@@ -16,6 +16,7 @@ Quick dispatch tasks tend to score ~0.3, deep work sessions ~0.9.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Optional
 
@@ -27,16 +28,25 @@ logger = logging.getLogger(__name__)
 
 
 def _percentile(sorted_values: List[float], pct: float) -> float:
-    """Return the percentile (0-100) of a pre-sorted list. Empty list → 0.0."""
+    """Return the percentile (0-100) of a pre-sorted list using canonical
+    nearest-rank: rank = ceil((pct / 100) * n), 1-indexed.
+
+    Edge cases:
+    - Empty list → 0.0
+    - pct <= 0 → first element
+    - pct >= 100 → last element
+    """
     if not sorted_values:
         return 0.0
     if pct <= 0:
         return sorted_values[0]
     if pct >= 100:
         return sorted_values[-1]
-    # Nearest-rank style — small data so exact interpolation isn't needed.
-    k = max(0, min(len(sorted_values) - 1, int(round((pct / 100.0) * (len(sorted_values) - 1)))))
-    return sorted_values[k]
+    n = len(sorted_values)
+    rank = math.ceil((pct / 100.0) * n)
+    # Convert 1-indexed rank to 0-indexed list index, clamp to range.
+    idx = max(0, min(n - 1, rank - 1))
+    return sorted_values[idx]
 
 
 def _histogram_bins(values: List[float], num_bins: int = 5) -> List[int]:

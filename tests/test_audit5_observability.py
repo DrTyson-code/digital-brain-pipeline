@@ -138,6 +138,26 @@ def test_temporal_tracker_logs_status_distribution(caplog: pytest.LogCaptureFixt
     assert "active=" in text
 
 
+def test_source_scorer_percentile_canonical_nearest_rank() -> None:
+    """The _percentile helper must use canonical nearest-rank semantics."""
+    from src.process.source_scorer import _percentile
+
+    # Empty
+    assert _percentile([], 50) == 0.0
+    # Edge cases
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 0) == 1.0
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 100) == 4.0
+    # Canonical nearest-rank: rank = ceil((pct/100) * n), 1-indexed
+    # P50 of [1,2,3,4] → ceil(0.5*4)=2 → 1-indexed rank 2 → values[1] = 2.0
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 50) == 2.0
+    # P25 of [1,2,3,4] → ceil(0.25*4)=1 → values[0] = 1.0
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 25) == 1.0
+    # P75 of [1,2,3,4] → ceil(0.75*4)=3 → values[2] = 3.0
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 75) == 3.0
+    # P95 of [1,2,3,4] → ceil(0.95*4)=4 → values[3] = 4.0
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 95) == 4.0
+
+
 def test_review_queue_logs_breakdowns(caplog: pytest.LogCaptureFixture) -> None:
     """Review queue should log priority/object_type/reason breakdowns when items present."""
     caplog.set_level(logging.INFO, logger="src.process.review_queue")
@@ -158,3 +178,30 @@ def test_review_queue_logs_breakdowns(caplog: pytest.LogCaptureFixture) -> None:
     assert "by object_type:" in text
     assert "by reason category:" in text
     assert "low_confidence=" in text
+    # Confidence histogram for concept items — calibration signal for
+    # tuning min_review_confidence.
+    assert "confidence histogram" in text
+    assert "current threshold=" in text
+
+
+def test_review_queue_confidence_histogram_bins_correctly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Confidence histogram should bin items by their underlying concept confidence."""
+    caplog.set_level(logging.INFO, logger="src.process.review_queue")
+    concepts = [
+        Concept(content="A", concept_type=ConceptType.INSIGHT, confidence=0.1),  # bin 0
+        Concept(content="B", concept_type=ConceptType.INSIGHT, confidence=0.3),  # bin 1
+        Concept(content="C", concept_type=ConceptType.INSIGHT, confidence=0.5),  # bin 2
+        # All three are below threshold 0.7 so all flagged.
+    ]
+    gen = ReviewQueueGenerator(min_review_confidence=0.7)
+    items, _ = gen.generate(
+        entities=[], concepts=concepts, contradictions=[]
+    )
+    assert len(items) == 3
+    text = caplog.text
+    assert "confidence histogram (3 concept items" in text
+    assert "[0.0-0.2]=1" in text
+    assert "[0.2-0.4]=1" in text
+    assert "[0.4-0.6]=1" in text

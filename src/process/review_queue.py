@@ -104,6 +104,11 @@ def _categorize_reason(reason: str) -> str:
     return "other"
 
 
+def _confidence_bin_label(idx: int) -> str:
+    """5-bin equal-width labels for confidence in [0.0, 1.0]."""
+    return ["[0.0-0.2]", "[0.2-0.4]", "[0.4-0.6]", "[0.6-0.8]", "[0.8-1.0]"][idx]
+
+
 @dataclass
 class ReviewQueueGenerator:
     """Generate a prioritised review queue from curation outputs."""
@@ -241,6 +246,37 @@ class ReviewQueueGenerator:
             logger.info("Review queue by priority: %s", priority_str)
             logger.info("Review queue by object_type: %s", type_str)
             logger.info("Review queue by reason category: %s", reason_str)
+
+            # Confidence histogram of concept items.
+            # This is the calibration signal for min_review_confidence: it
+            # shows how the queue would shrink if the threshold were bumped.
+            concept_conf_by_id = {c.id: c.confidence for c in concepts}
+            confidence_bins = [0] * 5
+            concept_items_with_conf = 0
+            for item in items:
+                if item.object_type != "concept":
+                    continue
+                conf = concept_conf_by_id.get(item.object_id)
+                if conf is None:
+                    # Status-change or stale items may reference concepts not
+                    # in the input list (e.g., from prior runs); skip silently.
+                    continue
+                bin_idx = min(4, max(0, int(conf * 5)))
+                confidence_bins[bin_idx] += 1
+                concept_items_with_conf += 1
+
+            if concept_items_with_conf > 0:
+                bins_str = ", ".join(
+                    f"{_confidence_bin_label(i)}={confidence_bins[i]}"
+                    for i in range(5)
+                )
+                logger.info(
+                    "Review queue confidence histogram (%d concept items, "
+                    "current threshold=%.2f): %s",
+                    concept_items_with_conf,
+                    self.min_review_confidence,
+                    bins_str,
+                )
 
         return items, review_ids
 
