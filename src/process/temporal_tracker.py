@@ -32,6 +32,7 @@ from src.models.message import Conversation
 
 logger = logging.getLogger(__name__)
 
+
 # Keywords whose presence in a newer concept suggests it supersedes an older one
 SUPERSESSION_KEYWORDS = [
     "changed",
@@ -48,8 +49,10 @@ SUPERSESSION_KEYWORDS = [
     "pivot",
 ]
 
+
 # Minimum content similarity for supersession comparison
 _DEFAULT_SIMILARITY_THRESHOLD = 0.40
+
 
 # Concept types to track
 _TRACKED_TYPES = (ConceptType.DECISION, ConceptType.ACTION_ITEM)
@@ -135,7 +138,6 @@ class TemporalTracker:
             # Fast pre-filter: skip if newer has no supersession signal at all
             if not self._has_supersession_signal(newer.content):
                 continue
-
             newer_lower = newer.content.lower()
             # Only look back at the last _MAX_LOOKBACK items of the same type
             window = [
@@ -143,17 +145,14 @@ class TemporalTracker:
                 if c.concept_type == newer.concept_type
                 and statuses[c.id].status != "superseded"
             ]
-
             for older in window:
                 similarity = SequenceMatcher(
                     None,
                     older.content.lower(),
                     newer_lower,
                 ).ratio()
-
                 if similarity < self.similarity_threshold:
                     continue
-
                 statuses[older.id].status = "superseded"
                 statuses[older.id].superseded_by_id = newer.id
                 statuses[older.id].superseded_by_title = newer.content[:80]
@@ -164,14 +163,22 @@ class TemporalTracker:
                     similarity,
                 )
 
-        superseded_count = sum(
-            1 for s in statuses.values() if s.status == "superseded"
-        )
+        # Status distribution across all concepts (active/superseded/etc.)
+        status_counts: Dict[str, int] = {}
+        for s in statuses.values():
+            status_counts[s.status] = status_counts.get(s.status, 0) + 1
+        # Sort by count desc for legible logging
+        sorted_status = sorted(status_counts.items(), key=lambda kv: -kv[1])
+        breakdown = ", ".join(f"{name}={count}" for name, count in sorted_status)
+
         logger.info(
-            "Temporal tracking: %d concepts analysed, %d superseded",
+            "Temporal tracking: %d concepts in tracked types (DECISION/ACTION_ITEM), "
+            "%d total concepts; status distribution: %s",
             len(tracked),
-            superseded_count,
+            len(statuses),
+            breakdown,
         )
+
         return statuses
 
     # ------------------------------------------------------------------

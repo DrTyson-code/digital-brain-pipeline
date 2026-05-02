@@ -48,6 +48,7 @@ class EntityResolver:
         Returns:
             (updated_extractions, merge_map) where merge_map maps
             merged_entity_id → canonical_entity_id.
+
             Each canonical entity appears at most once across all results.
         """
         # Collect all entities: existing (vault) entities first so they become
@@ -59,33 +60,55 @@ class EntityResolver:
         # Resolve per-type (blocking step)
         merge_map: Dict[str, str] = {}
         canonical_list: List[Entity] = []
-
         by_type: Dict[str, List[Entity]] = {}
         for entity in all_entities:
             by_type.setdefault(entity.entity_type.value, []).append(entity)
 
-        for type_entities in by_type.values():
+        # Track per-type merge counts and example merges for observability
+        merges_by_type: Dict[str, int] = {t: 0 for t in by_type}
+        example_merges: List[tuple[str, str, str]] = []  # (type, merged_name, canonical_name)
+
+        for type_name, type_entities in by_type.items():
             type_canonicals: List[Entity] = []
             for entity in type_entities:
                 if entity.id in merge_map:
                     continue  # already merged into a canonical
-
                 best = self._find_canonical(entity, type_canonicals)
                 if best is not None:
                     merge_map[entity.id] = best.id
+                    merges_by_type[type_name] = merges_by_type.get(type_name, 0) + 1
+                    if len(example_merges) < 5:
+                        example_merges.append((type_name, entity.name, best.name))
                     best.merge(entity)
                 else:
                     type_canonicals.append(entity)
-
             canonical_list.extend(type_canonicals)
 
         merged_count = len(merge_map)
+        merge_rate = (merged_count / len(all_entities) * 100.0) if all_entities else 0.0
         logger.info(
-            "Entity resolution: %d entities → %d canonical (%d merged)",
+            "Entity resolution: %d entities → %d canonical (%d merged, %.1f%% merge rate)",
             len(all_entities),
             len(canonical_list),
             merged_count,
+            merge_rate,
         )
+        if merges_by_type:
+            # Only log types that actually had merges, sorted by count desc
+            non_zero = sorted(
+                ((t, c) for t, c in merges_by_type.items() if c > 0),
+                key=lambda kv: -kv[1],
+            )
+            if non_zero:
+                breakdown = ", ".join(f"{t}={c}" for t, c in non_zero)
+                logger.info("Entity merges by type: %s", breakdown)
+        for ex_type, merged_name, canonical_name in example_merges:
+            logger.info(
+                "Entity merge example [%s]: %r → %r",
+                ex_type,
+                merged_name,
+                canonical_name,
+            )
 
         if merged_count == 0:
             return extractions, merge_map
@@ -101,7 +124,6 @@ class EntityResolver:
         # already been placed to avoid duplicating entities in the flat list.
         seen_canonical_ids: set[str] = set()
         updated: List[ExtractionResult] = []
-
         for ex in extractions:
             unique_entities: List[Entity] = []
             for entity in ex.entities:
@@ -151,13 +173,11 @@ class EntityResolver:
         """Return the best-matching candidate for entity, or None."""
         best_score = 0.0
         best_match: Optional[Entity] = None
-
         for candidate in candidates:
             score = self._max_name_similarity(entity, candidate)
             if score >= self.similarity_threshold and score > best_score:
                 best_score = score
                 best_match = candidate
-
         return best_match
 
     def _max_name_similarity(self, a: Entity, b: Entity) -> float:
