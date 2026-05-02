@@ -154,24 +154,27 @@ def test_can_afford_exactly_at_limit():
 
 
 def test_cannot_afford_exceeds_budget():
-    budget = TokenBudget(max_cost_usd=1.00)
+    # can_afford() now gates against hard_cap_usd (audit #2 fix). Set them
+    # equal here to preserve the original test's intent: a single budget number
+    # acts as the absolute ceiling.
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=1.00)
     tracker = CostTracker(budget)
     assert tracker.can_afford(1.01) is False
 
 
 def test_can_afford_accounts_for_existing_spend():
-    budget = TokenBudget(max_cost_usd=1.00)
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=1.00)
     tracker = CostTracker(budget)
-    # Spend $0.80 first
-    tracker.total_cost = 0.80
+    # Spend $0.80 first (set actual_cost directly; total_cost is now a property)
+    tracker.actual_cost = 0.80
     assert tracker.can_afford(0.20) is True
     assert tracker.can_afford(0.21) is False
 
 
 def test_assert_can_afford_raises_when_over_budget():
-    budget = TokenBudget(max_cost_usd=0.10)
+    budget = TokenBudget(max_cost_usd=0.10, hard_cap_usd=0.10)
     tracker = CostTracker(budget)
-    tracker.total_cost = 0.09
+    tracker.actual_cost = 0.09
     with pytest.raises(BudgetExceeded) as exc_info:
         tracker.assert_can_afford(0.02)
     assert exc_info.value.needed == pytest.approx(0.02)
@@ -185,17 +188,17 @@ def test_assert_can_afford_passes_within_budget():
 
 
 def test_remaining_decreases_with_spend():
-    budget = TokenBudget(max_cost_usd=1.00)
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=1.00)
     tracker = CostTracker(budget)
     assert tracker.remaining == pytest.approx(1.00)
-    tracker.total_cost = 0.30
+    tracker.actual_cost = 0.30
     assert tracker.remaining == pytest.approx(0.70)
 
 
 def test_remaining_never_negative():
-    budget = TokenBudget(max_cost_usd=1.00)
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=1.00)
     tracker = CostTracker(budget)
-    tracker.total_cost = 2.00  # over budget
+    tracker.actual_cost = 2.00  # over hard cap
     assert tracker.remaining == 0.0
 
 
@@ -307,3 +310,145 @@ def test_budget_exceeded_message():
     assert "0.0200" in str(exc)
     assert exc.needed == pytest.approx(0.05)
     assert exc.remaining == pytest.approx(0.02)
+
+
+# ---------------------------------------------------------------------------
+# CostTracker — cached vs actual cash (audit #2 fix, 2026-05-02)
+# ---------------------------------------------------------------------------
+
+def test_cached_response_does_not_increment_actual_cost():
+    """The audit #2 fix: cached responses contribute to modeled_cost only."""
+    from src.llm.provider import LLMResponse
+
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=5.00)
+    tracker = CostTracker(budget)
+
+    response = LLMResponse(
+        content="...",
+        model="claude-sonnet-4-20250514",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.0033,
+        latency_ms=0.0,
+        cached=True,
+    )
+    tracker.record(response, stage="entity", conversation_id="c1")
+
+    assert tracker.actual_cost == 0.0
+    assert tracker.modeled_cost == pytest.approx(0.0033)
+    assert tracker.total_cost == 0.0  # backward-compat alias for actual_cost
+
+
+def test_uncached_response_increments_both():
+    from src.llm.provider import LLMResponse
+
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=5.00)
+    tracker = CostTracker(budget)
+
+    response = LLMResponse(
+        content="...",
+        model="claude-sonnet-4-20250514",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.0033,
+        latency_ms=0.0,
+        cached=False,
+    )
+    tracker.record(response, stage="entity", conversation_id="c1")
+
+    assert tracker.actual_cost == pytest.approx(0.0033)
+    assert tracker.modeled_cost == pytest.approx(0.0033)
+
+
+def test_report_distinguishes_modeled_vs_actual():
+    from src.llm.provider import LLMResponse
+
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=5.00)
+    tracker = CostTracker(budget)
+
+    cached = LLMResponse(
+        content="...",
+        model="claude-sonnet-4-20250514",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.0033,
+        latency_ms=0.0,
+        cached=True,
+    )
+    uncached = LLMResponse(
+        content="...",
+        model="claude-sonnet-4-20250514",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.0033,
+        latency_ms=0.0,
+        cached=False,
+    )
+    tracker.record(cached, stage="entity", conversation_id="c1")
+    tracker.record(uncached, stage="concept", conversation_id="c1")
+
+    report = tracker.report()
+    assert report.total_cost_usd == pytest.approx(0.0033)
+    assert report.modeled_cost_usd == pytest.approx(0.0066)
+    assert report.cache_savings_usd == pytest.approx(0.0033)
+    assert report.cached_calls == 1
+    assert report.total_calls == 2
+
+
+def test_report_str_shows_both_when_caching_active():
+    """The cost report's string form should disclose both numbers when caching saved money."""
+    from src.llm.provider import LLMResponse
+
+    budget = TokenBudget(max_cost_usd=1.00, hard_cap_usd=5.00)
+    tracker = CostTracker(budget)
+    cached = LLMResponse(
+        content="x",
+        model="claude-sonnet-4-20250514",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.0033,
+        latency_ms=0.0,
+        cached=True,
+    )
+    tracker.record(cached, stage="entity", conversation_id="c1")
+
+    text = str(tracker.report())
+    assert "actual cash" in text
+    assert "modeled" in text
+    assert "saved by cache" in text
+
+
+# ---------------------------------------------------------------------------
+# TokenBudget — soft budget vs hard cap separation (audit #2 fix)
+# ---------------------------------------------------------------------------
+
+def test_hard_cap_must_be_at_least_soft():
+    """hard_cap_usd < max_cost_usd is invalid."""
+    with pytest.raises(ValueError, match="must be >="):
+        TokenBudget(max_cost_usd=2.00, hard_cap_usd=1.00)
+
+
+def test_can_afford_soft_separate_from_hard():
+    budget = TokenBudget(max_cost_usd=2.00, hard_cap_usd=5.00)
+    tracker = CostTracker(budget)
+    tracker.actual_cost = 1.50
+
+    # Within both: True for both gates
+    assert tracker.can_afford(0.40) is True
+    assert tracker.can_afford_soft(0.40) is True
+
+    # Above soft, below hard: hard True, soft False
+    assert tracker.can_afford(1.00) is True  # hard cap allows
+    assert tracker.can_afford_soft(1.00) is False  # soft target exceeded
+
+    # Above hard: both False
+    assert tracker.can_afford(4.00) is False
+    assert tracker.can_afford_soft(4.00) is False
+
+
+def test_default_hard_cap_above_default_soft():
+    """Default values: soft $1, hard $5."""
+    budget = TokenBudget()
+    assert budget.max_cost_usd == 1.00
+    assert budget.hard_cap_usd == 5.00
+

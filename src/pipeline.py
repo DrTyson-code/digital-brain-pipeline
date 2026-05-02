@@ -76,6 +76,7 @@ class LLMConfig:
     max_retries: int = 2
     timeout_seconds: int = 30
     max_cost_per_run_usd: float = 1.00
+    max_cost_hard_cap_usd: float = 5.00
     max_cost_per_conversation_usd: float = 0.05
     merge_similarity_threshold: float = 0.85
     max_conversation_tokens: int = 8000
@@ -112,6 +113,7 @@ class LLMConfig:
             max_retries=provider.get("max_retries", 2),
             timeout_seconds=provider.get("timeout_seconds", 30),
             max_cost_per_run_usd=budget.get("max_cost_per_run_usd", 1.00),
+            max_cost_hard_cap_usd=budget.get("max_cost_hard_cap_usd", 5.00),
             max_cost_per_conversation_usd=budget.get("max_cost_per_conversation_usd", 0.05),
             merge_similarity_threshold=quality.get("merge_similarity_threshold", 0.85),
             max_conversation_tokens=processing.get("max_conversation_tokens", 8000),
@@ -658,8 +660,13 @@ class Pipeline:
             return None, None
 
         # Create cost tracker
+        # If the soft budget overrides the hard cap (e.g., --budget 6.0 with
+        # default hard_cap=5.00), bump the hard cap to match so TokenBudget
+        # doesn't reject construction. Wrapper passes --budget as soft.
+        hard_cap = max(llm_cfg.max_cost_hard_cap_usd, llm_cfg.max_cost_per_run_usd)
         budget = TokenBudget(
             max_cost_usd=llm_cfg.max_cost_per_run_usd,
+            hard_cap_usd=hard_cap,
             max_cost_per_conversation=llm_cfg.max_cost_per_conversation_usd,
         )
         cost_tracker = CostTracker(budget)
